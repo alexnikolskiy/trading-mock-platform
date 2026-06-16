@@ -2848,7 +2848,9 @@ export function createApp(deps: AppDeps) {
 }
 ```
 
-> EXPLICIT ROUTE STRATEGY for `/ops/events` — it is registered twice and ORDER is load-bearing: the HTTP GET list handler is registered FIRST, the WS `upgradeWebSocket` route SECOND. A plain GET matches the list handler first and returns JSON (the WS route is never reached for non-upgrade requests); a real WebSocket upgrade is intercepted by `injectWebSocket` at the server level and routed to the `upgradeWebSocket` handler regardless of order. Both registrations are required; do NOT reorder. Task 8.2 verifies both behaviors against a live server.
+> EXPLICIT ROUTE STRATEGY for `/ops/events` (VERIFIED against Hono 4.12 + @hono/node-ws) — registered twice, ORDER load-bearing: the HTTP GET list handler FIRST, the WS `upgradeWebSocket` route SECOND. Hono runs same-path handlers in registration order and the FIRST one short-circuits, so the JSON handler must explicitly fall through on upgrades: `app.get('/ops/events', (c, next) => { if (c.req.header('upgrade')?.toLowerCase() === 'websocket') return next(); return respond(c, handleEvents(bundle, c.req.query('runId') ?? '', now(), c.req.query('cursor'))); })`. A plain GET returns the `EventsPage`; a WebSocket upgrade falls through to the `upgradeWebSocket` route (then `injectWebSocket` drives it). Do NOT reorder. Task 8.2 verifies both against a live server.
+>
+> Two strict-`tsconfig` adaptations in the real `app.ts` (runtime-identical to the listing above): `httpStatus` returns `ContentfulStatusCode` (imported from `hono/utils/http-status`, NOT bare `number` — Hono's `c.json` rejects a plain number status); and `/ops/runs`'s `RunsFilter` is built by a small `runsFilter(c)` helper that includes only DEFINED query params (required by `exactOptionalPropertyTypes:true`), rather than the inline `{mode,status,symbol}` object literal. The committed `src/http/app.ts` is authoritative.
 
 - [ ] **Step 4: Run it — Expected: PASS.**
 
