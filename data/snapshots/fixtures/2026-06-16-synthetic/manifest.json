@@ -1,0 +1,15 @@
+{
+  "ref": "2026-06-16-synthetic",
+  "createdAtMs": 1718503600000,
+  "bundleRef": "ops/bundle.json",
+  "checksumsRef": "checksums.json",
+  "versions": {
+    "snapshotSchemaVersion": "snapshot.1",
+    "opsReadContractVersion": "ops.3",
+    "researchReadContractVersion": "research.1",
+    "analysisContractVersion": "ops.4",
+    "exporterVersion": "synthetic.1",
+    "sourcePlatformCommit": "synthetic",
+    "redactionPolicyVersion": "redact.1"
+  }
+}

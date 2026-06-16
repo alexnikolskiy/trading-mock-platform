@@ -1,0 +1,7 @@
+node_modules
+dist
+.git
+*.log
+/data/snapshots/*
+!/data/snapshots/fixtures
+!/data/snapshots/fixtures/**
