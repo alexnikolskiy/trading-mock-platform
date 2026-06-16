@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "verify:contract-isolation": "node scripts/verify_contract_isolation.mjs",
     "verify:no-forbidden-deps": "node scripts/verify_no_forbidden_deps.mjs",
+    "verify:no-secrets": "tsx scripts/verify_no_secrets.ts",
     "check": "pnpm typecheck && pnpm verify:contract-isolation && pnpm test",
     "start": "node dist/src/bin/start-mock-ops.js",
     "dev": "tsx src/bin/start-mock-ops.ts"
