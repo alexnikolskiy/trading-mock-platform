@@ -2060,6 +2060,8 @@ git add -A && git commit -m "feat(ops): discover handler (ops.3 closed catalog)"
 - Test: `test/ops/runs.test.ts`, `test/ops/summary.test.ts`, `test/ops/trades.test.ts`, `test/ops/events.test.ts`, `test/ops/decisions.test.ts`, `test/ops/health.test.ts`, `test/ops/coverage.test.ts`
 
 > These handlers take the in-memory `SnapshotBundle` + parsed args and return contract DTOs. They never throw to transport; missing data → `availability:'unavailable'` or a `not_found` `OpsError`, never a thrown exception across the transport boundary.
+>
+> **Test note (load-bearing for `tsc`):** because the list handlers return `Page | OpsError`, each list-handler test (runs/trades/events/decisions) MUST import `isOpsError` from `../../src/contract/common/errors.js` and narrow the result (`expect(isOpsError(p)).toBe(false); if (isOpsError(p)) return;`) before reading `.items`/`.nextCursor`. Accessing union members directly passes at runtime (esbuild strips types) but FAILS `pnpm typecheck`. The committed `test/ops/{runs,trades,events,decisions}.test.ts` are the reference.
 
 - [ ] **Step 1: Write `test/ops/runs.test.ts`**
 
