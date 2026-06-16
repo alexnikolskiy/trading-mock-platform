@@ -1,0 +1,90 @@
+{
+  "runs": [
+    { "runId": "run_live_001", "mode": "live", "status": "running",
+      "strategy": { "name": "long_oi", "version": "1.0.0" },
+      "startedAtMs": 1718500000000, "finishedAtMs": null, "lastSeenMs": 1718503600000, "symbols": ["BTCUSDT"] },
+    { "runId": "run_paper_002", "mode": "paper", "status": "finished",
+      "strategy": { "name": "short_oi", "version": "1.0.0" },
+      "startedAtMs": 1718400000000, "finishedAtMs": 1718486400000, "lastSeenMs": 1718486400000, "symbols": ["ETHUSDT"] }
+  ],
+  "tradesByRun": {
+    "run_paper_002": [
+      { "tradeId": "trade_win_01", "runId": "run_paper_002", "symbol": "ETHUSDT", "side": "long",
+        "openedAtMs": 1718410000000, "closedAtMs": 1718420000000, "realizedPnl": "42.50000000",
+        "pnlPct": "2.10", "isWin": true, "closeReason": "tp" },
+      { "tradeId": "trade_loss_01", "runId": "run_paper_002", "symbol": "ETHUSDT", "side": "short",
+        "openedAtMs": 1718430000000, "closedAtMs": 1718440000000, "realizedPnl": "-18.25000000",
+        "pnlPct": "-0.90", "isWin": false, "closeReason": "sl" }
+    ]
+  },
+  "eventsByRun": {
+    "run_paper_002": [
+      { "category": "run_started", "severity": "info", "runId": "run_paper_002", "tradeId": null,
+        "tsMs": 1718400000000, "safeMessage": "paper run started" },
+      { "category": "run_finished", "severity": "info", "runId": "run_paper_002", "tradeId": null,
+        "tsMs": 1718486400000, "safeMessage": "paper run finished" }
+    ]
+  },
+  "decisionsByRun": {
+    "run_paper_002": [
+      { "category": "no_entry", "runId": "run_paper_002", "botId": "short_oi", "symbol": "ETHUSDT",
+        "side": "short", "reason": "oi_flat", "tsMs": 1718405000000, "safeMessage": "skip: OI not rising" }
+    ]
+  },
+  "runtimeHealth": {
+    "entries": [
+      { "source": "long_oi", "status": "ok",
+        "indicators": { "ready": true, "freshnessOk": true, "pipelineOk": true, "serviceOk": true, "botOk": true },
+        "availability": "available", "capturedAtMs": 1718503600000 }
+    ],
+    "asOf": 1718503600000
+  },
+  "marketHealth": { "status": "ok", "diagnostics": { "symbolsTracked": 2 }, "streamAgeMs": 1200, "availability": "available", "asOf": 1718503600000 },
+  "executionHealth": { "status": "ok", "recentCounts": {}, "lastEventMs": null, "availability": "unavailable", "asOf": 1718503600000 },
+  "coverage": {
+    "entries": [
+      { "source": "bybit", "kind": "openInterest", "state": "present", "freshnessAgeMs": 1500 },
+      { "source": "bybit", "kind": "liquidations", "state": "present", "freshnessAgeMs": 2000 },
+      { "source": "bybit", "kind": "funding", "state": "unsupported", "freshnessAgeMs": null }
+    ],
+    "availability": "available", "asOf": 1718503600000
+  },
+  "analysisByRun": {
+    "run_paper_002": {
+      "runRef": "run_paper_002", "opsContractVersion": "ops.4", "asOf": 1718503600000, "freshness": "fresh",
+      "identity": { "mode": "paper", "strategy": { "name": "short_oi", "version": "1.0.0" }, "symbols": ["ETHUSDT"] },
+      "period": { "fromMs": 1718400000000, "toMs": 1718486400000 },
+      "healthContext": "runtime ok during window",
+      "metrics": { "pnl": "24.25000000", "winRate": 50, "maxDrawdown": "18.25000000", "totalTrades": 2, "profitFactor": "2.33", "topTradeContributionPct": 100 },
+      "trades": [
+        { "tradeId": "trade_win_01", "symbol": "ETHUSDT", "side": "long", "openedAtMs": 1718410000000, "closedAtMs": 1718420000000, "realizedPnl": "42.50000000", "entryReason": "oi_breakout", "exitReason": "tp" },
+        { "tradeId": "trade_loss_01", "symbol": "ETHUSDT", "side": "short", "openedAtMs": 1718430000000, "closedAtMs": 1718440000000, "realizedPnl": "-18.25000000", "entryReason": "oi_breakout", "exitReason": "sl" }
+      ],
+      "strategyConfig": { "available": false, "reason": "not_in_sanitized_export" },
+      "dcaCount": { "available": false, "reason": "not_safely_sourced" },
+      "slTpBeEvents": { "available": false, "reason": "not_safely_sourced" },
+      "features": { "available": false, "reason": "market_features_out_of_scope_in_001" },
+      "summaryPatterns": ["one winning TP, one losing SL"]
+    }
+  },
+  "researchByRun": {
+    "run_paper_002": {
+      "summary": { "runRef": "run_paper_002", "mode": "paper",
+        "metrics": { "netPnlUsd": "24.25000000", "winRate": 50, "maxDrawdownPct": "0.90", "profitFactor": "2.33", "sharpe": { "available": false, "reason": "insufficient_sample" }, "totalTrades": 2 },
+        "asOf": 1718503600000 },
+      "trades": [
+        { "tradeId": "trade_win_01", "symbol": "ETHUSDT", "side": "long", "openedAtMs": 1718410000000, "closedAtMs": 1718420000000, "realizedPnl": "42.50000000" },
+        { "tradeId": "trade_loss_01", "symbol": "ETHUSDT", "side": "short", "openedAtMs": 1718430000000, "closedAtMs": 1718440000000, "realizedPnl": "-18.25000000" }
+      ],
+      "decisions": [
+        { "category": "no_entry", "symbol": "ETHUSDT", "reason": "oi_flat", "tsMs": 1718405000000 }
+      ],
+      "analysisContext": "paper run, OI strategy, 2 trades"
+    }
+  },
+  "replay": { "frames": [
+    { "offsetMs": 0, "resource": "runs" },
+    { "offsetMs": 1000, "resource": "runtime-health" },
+    { "offsetMs": 2000, "resource": "runs" }
+  ] }
+}
