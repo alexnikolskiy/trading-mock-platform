@@ -1,6 +1,6 @@
 # Standalone Ops Read Mock Platform — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement this plan task-by-task using the project's installed execution workflow. Each task is TDD (write the failing test → run it red → implement the minimum → run it green → commit). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `trading-mock-platform` — a standalone, read-only, snapshot-backed service that imitates the private `trading-platform` **read** surfaces (Ops Read HTTP/WS for `trading-office`, plus a Research Read seam for `trading-lab`) closely enough that downstreams switch to it by URL/token/config, with zero npm coupling to the private platform.
 
@@ -153,6 +153,7 @@ dist/
 /data/snapshots/*
 !/data/snapshots/.gitkeep
 !/data/snapshots/fixtures/
+!/data/snapshots/fixtures/**
 ```
 
 - [ ] **Step 5: Create `.env.example`**
@@ -779,7 +780,7 @@ for (const file of walk(ROOT)) {
 }
 
 if (violations.length) {
-  console.error('Contract isolation violations:\n' + violations.join('\n'));
+  console.error(`Contract isolation violations:\n${violations.join('\n')}`);
   process.exit(1);
 }
 console.log('contract isolation OK');
@@ -883,16 +884,20 @@ const base: SnapshotVersions = {
 };
 
 describe('assertSnapshotCompatible', () => {
-  it('accepts a snapshot whose major contract versions are supported', () => {
+  it('accepts a snapshot whose contract versions EXACTLY match the supported set', () => {
     expect(() => assertSnapshotCompatible(base)).not.toThrow();
   });
-  it('fails closed on unsupported snapshot schema major', () => {
+  it('fails closed on an unsupported snapshot schema version', () => {
     expect(() => assertSnapshotCompatible({ ...base, snapshotSchemaVersion: 'snapshot.2' }))
       .toThrow(/unsupported snapshotSchemaVersion 'snapshot\.2'/i);
   });
-  it('fails closed on unsupported ops-read contract major', () => {
+  it('fails closed on a higher ops-read contract version', () => {
     expect(() => assertSnapshotCompatible({ ...base, opsReadContractVersion: 'ops.99' }))
       .toThrow(/unsupported opsReadContractVersion/i);
+  });
+  it('fails closed on an OLDER ops-read minor (ops.2 is NOT compatible with ops.3 in MVP)', () => {
+    expect(() => assertSnapshotCompatible({ ...base, opsReadContractVersion: 'ops.2' }))
+      .toThrow(/unsupported opsReadContractVersion 'ops\.2'/i);
   });
 });
 ```
@@ -911,17 +916,13 @@ import { OPS_READ_CONTRACT_VERSION } from '../contract/ops-read/version.js';
 import { ANALYSIS_CONTRACT_VERSION } from '../contract/analysis/version.js';
 import { RESEARCH_READ_CONTRACT_VERSION } from '../contract/research-read/version.js';
 
-/** A dotted version 'name.N' is compatible when name matches and N <= supported N (additive-optional = minor). */
-function majorOf(v: string): { name: string; n: number } {
-  const [name, n] = v.split('.');
-  return { name: name ?? '', n: Number(n ?? 'NaN') };
-}
+/** MVP policy: EXACT match. No migration/transform layer exists yet, so a differing version —
+ *  even an older minor like ops.2 vs ops.3 — is rejected (fail closed). Loosen this to a range
+ *  ONLY when a documented migration policy lands. */
 function check(field: string, got: string, supported: string): void {
-  const g = majorOf(got);
-  const s = majorOf(supported);
-  if (g.name !== s.name || !Number.isInteger(g.n) || g.n > s.n) {
+  if (got !== supported) {
     throw new Error(
-      `unsupported ${field} '${got}' (this mock supports '${supported}' and earlier-minor of the same major)`,
+      `unsupported ${field} '${got}' (this mock supports exactly '${supported}'; no migration policy yet)`,
     );
   }
 }
@@ -945,7 +946,413 @@ Expected: PASS.
 git add -A && git commit -m "feat(snapshot): fail-closed version compatibility gate"
 ```
 
-### Task 2.3: Snapshot loader (manifest + checksums + compat + bundle)
+### Task 2.3: Snapshot schema validation (AJV, exact keys, fail-closed on unknown fields)
+
+> The loader must not trust `JSON.parse(...) as Type`. Manifest and bundle are validated against
+> AJV schemas with `additionalProperties:false` on every fixed-shape object — an unknown/extra field
+> fails closed. The schema OBJECTS live in the import-clean contract layer (plain data, no imports);
+> the AJV validator lives outside it (it imports `ajv`, which the contract layer must not).
+
+**Files:**
+- Create: `src/contract/snapshot/schema.ts` (plain JSON-Schema objects — NO imports, stays import-clean)
+- Create: `src/snapshot/validate.ts` (AJV validator — imports `ajv`)
+- Test: `test/snapshot/validate.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { assertValidManifest, assertValidBundle } from '../../src/snapshot/validate.js';
+
+const versions = {
+  snapshotSchemaVersion: 'snapshot.1', opsReadContractVersion: 'ops.3',
+  researchReadContractVersion: 'research.1', analysisContractVersion: 'ops.4',
+  exporterVersion: 'e', sourcePlatformCommit: 'x', redactionPolicyVersion: 'r',
+};
+const manifest = { ref: 't', createdAtMs: 1, bundleRef: 'ops/bundle.json', checksumsRef: 'checksums.json', versions };
+const emptyBundle = {
+  runs: [], tradesByRun: {}, eventsByRun: {}, decisionsByRun: {},
+  runtimeHealth: { entries: [], asOf: 1 },
+  marketHealth: { status: 'ok', diagnostics: {}, streamAgeMs: null, availability: 'available', asOf: 1 },
+  executionHealth: { status: 'ok', recentCounts: {}, lastEventMs: null, availability: 'unavailable', asOf: 1 },
+  coverage: { entries: [], availability: 'available', asOf: 1 },
+  analysisByRun: {}, researchByRun: {}, replay: { frames: [] },
+};
+
+describe('snapshot schema validation', () => {
+  it('accepts a well-formed manifest and bundle', () => {
+    expect(() => assertValidManifest(manifest)).not.toThrow();
+    expect(() => assertValidBundle(emptyBundle)).not.toThrow();
+  });
+  it('FAILS CLOSED on an unknown field in the manifest', () => {
+    expect(() => assertValidManifest({ ...manifest, leaked: 'x' })).toThrow(/manifest failed schema/i);
+  });
+  it('FAILS CLOSED on an unknown field in the bundle', () => {
+    expect(() => assertValidBundle({ ...emptyBundle, leaked: 'x' })).toThrow(/bundle failed schema/i);
+  });
+  it('FAILS CLOSED on an unknown field inside a run record', () => {
+    const bad = { ...emptyBundle, runs: [{
+      runId: 'r1', mode: 'live', status: 'running', strategy: { name: 's', version: '1' },
+      startedAtMs: 1, finishedAtMs: null, lastSeenMs: 2, symbols: [], hostPath: '/home/op/x' }] };
+    expect(() => assertValidBundle(bad)).toThrow(/bundle failed schema/i);
+  });
+});
+```
+
+- [ ] **Step 2: Run it — Expected: FAIL (module not found).**
+
+Run: `pnpm vitest run test/snapshot/validate.test.ts`
+
+- [ ] **Step 3: Create `src/contract/snapshot/schema.ts`** (plain objects — no imports)
+
+```ts
+export const MANIFEST_SCHEMA = {
+  $id: 'snapshot-manifest',
+  type: 'object',
+  additionalProperties: false,
+  required: ['ref', 'createdAtMs', 'versions', 'bundleRef', 'checksumsRef'],
+  properties: {
+    ref: { type: 'string' },
+    createdAtMs: { type: 'number' },
+    bundleRef: { type: 'string' },
+    checksumsRef: { type: 'string' },
+    versions: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'snapshotSchemaVersion', 'opsReadContractVersion', 'researchReadContractVersion',
+        'analysisContractVersion', 'exporterVersion', 'sourcePlatformCommit', 'redactionPolicyVersion',
+      ],
+      properties: {
+        snapshotSchemaVersion: { type: 'string' },
+        opsReadContractVersion: { type: 'string' },
+        researchReadContractVersion: { type: 'string' },
+        analysisContractVersion: { type: 'string' },
+        exporterVersion: { type: 'string' },
+        sourcePlatformCommit: { type: 'string' },
+        redactionPolicyVersion: { type: 'string' },
+      },
+    },
+  },
+} as const;
+
+const capabilityAbsent = {
+  type: 'object', additionalProperties: false, required: ['available'],
+  properties: { available: { const: false }, reason: { type: 'string' } },
+} as const;
+
+export const BUNDLE_SCHEMA = {
+  $id: 'snapshot-bundle',
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'runs', 'tradesByRun', 'eventsByRun', 'decisionsByRun', 'runtimeHealth',
+    'marketHealth', 'executionHealth', 'coverage', 'analysisByRun', 'researchByRun', 'replay',
+  ],
+  properties: {
+    runs: { type: 'array', items: { $ref: '#/$defs/botRun' } },
+    tradesByRun: { type: 'object', additionalProperties: { type: 'array', items: { $ref: '#/$defs/closedTrade' } } },
+    eventsByRun: { type: 'object', additionalProperties: { type: 'array', items: { $ref: '#/$defs/event' } } },
+    decisionsByRun: { type: 'object', additionalProperties: { type: 'array', items: { $ref: '#/$defs/decision' } } },
+    runtimeHealth: { $ref: '#/$defs/runtimeHealth' },
+    marketHealth: { $ref: '#/$defs/marketHealth' },
+    executionHealth: { $ref: '#/$defs/executionHealth' },
+    coverage: { $ref: '#/$defs/coverage' },
+    analysisByRun: { type: 'object', additionalProperties: { $ref: '#/$defs/analysis' } },
+    researchByRun: { type: 'object', additionalProperties: { $ref: '#/$defs/research' } },
+    replay: {
+      type: 'object', additionalProperties: false, required: ['frames'],
+      properties: { frames: { type: 'array', items: { $ref: '#/$defs/replayFrame' } } },
+    },
+  },
+  $defs: {
+    capabilityAbsent,
+    botRun: {
+      type: 'object', additionalProperties: false,
+      required: ['runId', 'mode', 'status', 'strategy', 'startedAtMs', 'finishedAtMs', 'lastSeenMs', 'symbols'],
+      properties: {
+        runId: { type: 'string' }, mode: { enum: ['live', 'paper', 'backtest'] },
+        status: { enum: ['running', 'finished', 'crashed', 'aborted'] },
+        strategy: { type: 'object', additionalProperties: false, required: ['name', 'version'],
+          properties: { name: { type: 'string' }, version: { type: 'string' } } },
+        startedAtMs: { type: 'number' }, finishedAtMs: { type: ['number', 'null'] },
+        lastSeenMs: { type: 'number' }, symbols: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    closedTrade: {
+      type: 'object', additionalProperties: false,
+      required: ['tradeId', 'runId', 'symbol', 'side', 'openedAtMs', 'closedAtMs', 'realizedPnl', 'pnlPct', 'isWin', 'closeReason'],
+      properties: {
+        tradeId: { type: 'string' }, runId: { type: 'string' }, symbol: { type: 'string' },
+        side: { enum: ['long', 'short'] }, openedAtMs: { type: 'number' }, closedAtMs: { type: ['number', 'null'] },
+        realizedPnl: { type: 'string' }, pnlPct: { type: 'string' }, isWin: { type: ['boolean', 'null'] },
+        closeReason: { type: ['string', 'null'] },
+      },
+    },
+    event: {
+      type: 'object', additionalProperties: false,
+      required: ['category', 'severity', 'runId', 'tradeId', 'tsMs', 'safeMessage'],
+      properties: {
+        category: { type: 'string' },
+        severity: { anyOf: [{ enum: ['debug', 'info', 'warn', 'error', 'fatal'] }, { type: 'null' }] },
+        runId: { type: 'string' }, tradeId: { type: ['string', 'null'] }, tsMs: { type: 'number' }, safeMessage: { type: 'string' },
+      },
+    },
+    decision: {
+      type: 'object', additionalProperties: false,
+      required: ['category', 'runId', 'botId', 'symbol', 'side', 'reason', 'tsMs', 'safeMessage'],
+      properties: {
+        category: { type: 'string' }, runId: { type: 'string' }, botId: { type: 'string' }, symbol: { type: 'string' },
+        side: { enum: ['long', 'short'] }, reason: { type: 'string' }, tsMs: { type: 'number' }, safeMessage: { type: 'string' },
+      },
+    },
+    indicators: {
+      type: 'object', additionalProperties: false,
+      required: ['ready', 'freshnessOk', 'pipelineOk', 'serviceOk', 'botOk'],
+      properties: {
+        ready: { type: 'boolean' }, freshnessOk: { type: 'boolean' }, pipelineOk: { type: 'boolean' },
+        serviceOk: { type: 'boolean' }, botOk: { type: 'boolean' },
+      },
+    },
+    runtimeHealth: {
+      type: 'object', additionalProperties: false, required: ['entries', 'asOf'],
+      properties: {
+        asOf: { type: 'number' },
+        entries: { type: 'array', items: {
+          type: 'object', additionalProperties: false,
+          required: ['source', 'status', 'indicators', 'availability', 'capturedAtMs'],
+          properties: {
+            source: { type: 'string' }, status: { enum: ['ok', 'degraded', 'down'] },
+            indicators: { $ref: '#/$defs/indicators' },
+            availability: { enum: ['available', 'degraded', 'unavailable'] }, capturedAtMs: { type: 'number' },
+          },
+        } },
+      },
+    },
+    marketHealth: {
+      type: 'object', additionalProperties: false, required: ['status', 'diagnostics', 'streamAgeMs', 'availability', 'asOf'],
+      properties: {
+        status: { enum: ['ok', 'degraded', 'down'] }, diagnostics: { type: 'object' },
+        streamAgeMs: { type: ['number', 'null'] }, availability: { enum: ['available', 'degraded', 'unavailable'] }, asOf: { type: 'number' },
+      },
+    },
+    executionHealth: {
+      type: 'object', additionalProperties: false, required: ['status', 'recentCounts', 'lastEventMs', 'availability', 'asOf'],
+      properties: {
+        status: { enum: ['ok', 'degraded', 'down'] }, recentCounts: { type: 'object', additionalProperties: { type: 'number' } },
+        lastEventMs: { type: ['number', 'null'] }, availability: { enum: ['available', 'degraded', 'unavailable'] }, asOf: { type: 'number' },
+      },
+    },
+    coverage: {
+      type: 'object', additionalProperties: false, required: ['entries', 'availability', 'asOf'],
+      properties: {
+        availability: { enum: ['available', 'degraded', 'unavailable'] }, asOf: { type: 'number' },
+        entries: { type: 'array', items: {
+          type: 'object', additionalProperties: false, required: ['source', 'kind', 'state', 'freshnessAgeMs'],
+          properties: {
+            source: { type: 'string' }, kind: { enum: ['openInterest', 'liquidations', 'funding', 'taker'] },
+            state: { enum: ['present', 'missing', 'stale', 'unsupported'] }, freshnessAgeMs: { type: ['number', 'null'] },
+          },
+        } },
+      },
+    },
+    analysisTrade: {
+      type: 'object', additionalProperties: false,
+      required: ['tradeId', 'symbol', 'side', 'openedAtMs', 'closedAtMs', 'realizedPnl', 'entryReason', 'exitReason'],
+      properties: {
+        tradeId: { type: 'string' }, symbol: { type: 'string' }, side: { enum: ['long', 'short'] },
+        openedAtMs: { type: 'number' }, closedAtMs: { type: ['number', 'null'] }, realizedPnl: { type: 'string' },
+        entryReason: { type: ['string', 'null'] }, exitReason: { type: ['string', 'null'] },
+      },
+    },
+    analysis: {
+      type: 'object', additionalProperties: false,
+      required: ['runRef', 'opsContractVersion', 'asOf', 'freshness', 'identity', 'period', 'healthContext',
+        'metrics', 'trades', 'strategyConfig', 'dcaCount', 'slTpBeEvents', 'features', 'summaryPatterns'],
+      properties: {
+        runRef: { type: 'string' }, opsContractVersion: { type: 'string' }, asOf: { type: 'number' },
+        freshness: { enum: ['fresh', 'stale', 'degraded'] },
+        identity: {
+          type: 'object', additionalProperties: false, required: ['mode', 'strategy', 'symbols'],
+          properties: {
+            mode: { enum: ['live', 'paper', 'backtest'] },
+            strategy: { type: 'object', additionalProperties: false, required: ['name', 'version'],
+              properties: { name: { type: 'string' }, version: { type: 'string' } } },
+            symbols: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        period: { type: 'object', additionalProperties: false, required: ['fromMs', 'toMs'],
+          properties: { fromMs: { type: 'number' }, toMs: { type: 'number' } } },
+        healthContext: { type: 'string' },
+        metrics: {
+          type: 'object', additionalProperties: false,
+          required: ['pnl', 'winRate', 'maxDrawdown', 'totalTrades', 'topTradeContributionPct'],
+          properties: {
+            pnl: { type: 'string' }, winRate: { type: 'number' }, maxDrawdown: { type: 'string' },
+            totalTrades: { type: 'number' }, profitFactor: { type: 'string' }, topTradeContributionPct: { type: 'number' },
+          },
+        },
+        trades: { type: 'array', items: { $ref: '#/$defs/analysisTrade' } },
+        strategyConfig: { anyOf: [{ type: 'object' }, { $ref: '#/$defs/capabilityAbsent' }] },
+        dcaCount: { anyOf: [{ type: 'number' }, { $ref: '#/$defs/capabilityAbsent' }] },
+        slTpBeEvents: { anyOf: [
+          { type: 'array', items: { type: 'object', additionalProperties: false, required: ['tradeId', 'kind', 'tsMs'],
+            properties: { tradeId: { type: 'string' }, kind: { enum: ['sl', 'tp', 'be'] }, tsMs: { type: 'number' } } } },
+          { $ref: '#/$defs/capabilityAbsent' },
+        ] },
+        features: { anyOf: [
+          { type: 'object', additionalProperties: false, required: ['oi', 'liquidation', 'dump', 'bounce'],
+            properties: { oi: { type: 'boolean' }, liquidation: { type: 'boolean' }, dump: { type: 'boolean' }, bounce: { type: 'boolean' } } },
+          { $ref: '#/$defs/capabilityAbsent' },
+        ] },
+        summaryPatterns: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    research: {
+      type: 'object', additionalProperties: false, required: ['summary', 'trades', 'decisions', 'analysisContext'],
+      properties: {
+        summary: {
+          type: 'object', additionalProperties: false, required: ['runRef', 'mode', 'metrics', 'asOf'],
+          properties: {
+            runRef: { type: 'string' }, mode: { enum: ['live', 'paper', 'backtest'] }, asOf: { type: 'number' },
+            metrics: {
+              type: 'object', additionalProperties: false, required: ['netPnlUsd', 'winRate', 'maxDrawdownPct', 'sharpe', 'totalTrades'],
+              properties: {
+                netPnlUsd: { type: 'string' }, winRate: { type: 'number' }, maxDrawdownPct: { type: 'string' },
+                profitFactor: { type: 'string' }, sharpe: { anyOf: [{ type: 'string' }, { $ref: '#/$defs/capabilityAbsent' }] }, totalTrades: { type: 'number' },
+              },
+            },
+          },
+        },
+        trades: { type: 'array', items: {
+          type: 'object', additionalProperties: false, required: ['tradeId', 'symbol', 'side', 'openedAtMs', 'closedAtMs', 'realizedPnl'],
+          properties: { tradeId: { type: 'string' }, symbol: { type: 'string' }, side: { enum: ['long', 'short'] },
+            openedAtMs: { type: 'number' }, closedAtMs: { type: ['number', 'null'] }, realizedPnl: { type: 'string' } } } },
+        decisions: { type: 'array', items: {
+          type: 'object', additionalProperties: false, required: ['category', 'symbol', 'reason', 'tsMs'],
+          properties: { category: { type: 'string' }, symbol: { type: 'string' }, reason: { type: 'string' }, tsMs: { type: 'number' } } } },
+        analysisContext: { type: 'string' },
+      },
+    },
+    replayFrame: {
+      type: 'object', additionalProperties: false, required: ['offsetMs', 'resource'],
+      properties: { offsetMs: { type: 'number' }, resource: { enum: ['runs', 'runtime-health'] } },
+    },
+  },
+} as const;
+```
+
+- [ ] **Step 4: Create `src/snapshot/validate.ts`** (AJV — outside the contract layer)
+
+```ts
+import Ajv from 'ajv';
+import { MANIFEST_SCHEMA, BUNDLE_SCHEMA } from '../contract/snapshot/schema.js';
+
+const ajv = new Ajv({ allErrors: true, strict: false });
+const validateManifest = ajv.compile(MANIFEST_SCHEMA);
+const validateBundle = ajv.compile(BUNDLE_SCHEMA);
+
+export function assertValidManifest(obj: unknown): void {
+  if (!validateManifest(obj)) {
+    throw new Error(`snapshot manifest failed schema validation: ${ajv.errorsText(validateManifest.errors)}`);
+  }
+}
+export function assertValidBundle(obj: unknown): void {
+  if (!validateBundle(obj)) {
+    throw new Error(`snapshot bundle failed schema validation: ${ajv.errorsText(validateBundle.errors)}`);
+  }
+}
+```
+
+> If `import Ajv from 'ajv'` errors under NodeNext ESM, use `import { Ajv } from 'ajv';` (ajv v8 exposes both). Keep `strict: false` so the hand-written schemas compile without strict-mode keyword warnings.
+
+- [ ] **Step 5: Run it — Expected: PASS.**
+
+Run: `pnpm vitest run test/snapshot/validate.test.ts`
+
+- [ ] **Step 6: Confirm contract isolation still passes** (schema.ts must have zero imports)
+
+Run: `pnpm verify:contract-isolation`
+Expected: `contract isolation OK`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add -A && git commit -m "feat(snapshot): AJV schema validation (additionalProperties:false, fail-closed on unknown fields)"
+```
+
+### Task 2.4: Secret / forbidden-pattern scan (defense-in-depth)
+
+> Moved AHEAD of the loader: the loader scans BOTH manifest and bundle text with this before parsing.
+
+**Files:**
+- Create: `src/safety/secret-scan.ts`
+- Test: `test/safety/secret-scan.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { scanForSecrets } from '../../src/safety/secret-scan.js';
+
+describe('scanForSecrets', () => {
+  it('passes clean sanitized content', () => {
+    expect(() => scanForSecrets('bundle.json', '{"runs":[{"runId":"r_opaque1"}]}')).not.toThrow();
+  });
+  it('fails closed on an exchange API key pattern', () => {
+    expect(() => scanForSecrets('bundle.json', 'key=AKIA1234567890ABCD'))
+      .toThrow(/forbidden pattern/i);
+  });
+  it('fails closed on an absolute host path', () => {
+    expect(() => scanForSecrets('bundle.json', '{"p":"/home/operator/secret.log"}'))
+      .toThrow(/forbidden pattern/i);
+  });
+  it('fails closed on a bearer/JWT-looking token', () => {
+    expect(() => scanForSecrets('bundle.json', 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.aa.bb'))
+      .toThrow(/forbidden pattern/i);
+  });
+});
+```
+
+- [ ] **Step 2: Run it — Expected: FAIL (module not found).**
+
+Run: `pnpm vitest run test/safety/secret-scan.test.ts`
+
+- [ ] **Step 3: Write `src/safety/secret-scan.ts`**
+
+```ts
+/** Defense-in-depth blocklist over an already-sanitized snapshot. Sanitization is primarily an
+ *  operator-side allowlist projection; this catches leaks that slipped through. Applied to BOTH
+ *  manifest and bundle text by the loader. Fail closed. */
+const FORBIDDEN: ReadonlyArray<readonly [string, RegExp]> = [
+  ['aws access key', /\bAKIA[0-9A-Z]{16}\b/],
+  ['private key block', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
+  ['jwt / bearer token', /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{2,}\.[A-Za-z0-9_-]{2,}/],
+  ['absolute unix host path', /(?:"|')\/(?:home|root|etc|var|usr|opt)\//],
+  ['windows host path', /[A-Za-z]:\\\\(?:Users|home)\\\\/],
+  ['db connection url', /\b(?:postgres|postgresql|mysql|mongodb):\/\/[^\s"']+/],
+];
+
+export function scanForSecrets(name: string, content: string): void {
+  for (const [label, re] of FORBIDDEN) {
+    if (re.test(content)) {
+      throw new Error(`snapshot safety: forbidden pattern '${label}' detected in ${name} — refusing to load`);
+    }
+  }
+}
+```
+
+- [ ] **Step 4: Run it — Expected: PASS.**
+
+Run: `pnpm vitest run test/safety/secret-scan.test.ts`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A && git commit -m "feat(safety): defense-in-depth secret/forbidden-pattern scan (fail-closed)"
+```
+
+### Task 2.5: Snapshot loader (manifest + schema + compat + checksums + secret-scan + bundle)
 
 **Files:**
 - Create: `src/snapshot/loader.ts`
@@ -1010,8 +1417,35 @@ describe('loadSnapshot', () => {
     }));
     expect(() => loadSnapshot(bad)).toThrow(/checksum mismatch/i);
   });
+  it('fails closed when the bundle has an unknown field (schema additionalProperties:false)', () => {
+    const bad = mkdtempSync(join(tmpdir(), 'snap-leak-'));
+    mkdirSync(join(bad, 'ops'), { recursive: true });
+    const leaked = {
+      runs: [], tradesByRun: {}, eventsByRun: {}, decisionsByRun: {},
+      runtimeHealth: { entries: [], asOf: 1 },
+      marketHealth: { status: 'ok', diagnostics: {}, streamAgeMs: null, availability: 'available', asOf: 1 },
+      executionHealth: { status: 'ok', recentCounts: {}, lastEventMs: null, availability: 'unavailable', asOf: 1 },
+      coverage: { entries: [], availability: 'available', asOf: 1 },
+      analysisByRun: {}, researchByRun: {}, replay: { frames: [] },
+      leaked: 'should-be-rejected',
+    };
+    const str = JSON.stringify(leaked);
+    writeFileSync(join(bad, 'ops', 'bundle.json'), str);
+    writeFileSync(join(bad, 'checksums.json'), JSON.stringify({ 'ops/bundle.json': sha256Hex(str) }));
+    writeFileSync(join(bad, 'manifest.json'), JSON.stringify({
+      ref: 'leak', createdAtMs: 1, bundleRef: 'ops/bundle.json', checksumsRef: 'checksums.json',
+      versions: {
+        snapshotSchemaVersion: 'snapshot.1', opsReadContractVersion: 'ops.3',
+        researchReadContractVersion: 'research.1', analysisContractVersion: 'ops.4',
+        exporterVersion: 'exp.1', sourcePlatformCommit: 'abc', redactionPolicyVersion: 'redact.1',
+      },
+    }));
+    expect(() => loadSnapshot(bad)).toThrow(/bundle failed schema/i);
+  });
 });
 ```
+
+> The loader test imports `sha256Hex` from `../../src/snapshot/checksums.js` (add it to the existing import line alongside any others).
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1027,6 +1461,7 @@ import type { SnapshotManifest } from '../contract/snapshot/manifest.js';
 import type { SnapshotBundle } from '../contract/snapshot/bundle.js';
 import { verifyChecksum } from './checksums.js';
 import { assertSnapshotCompatible } from './compat.js';
+import { assertValidManifest, assertValidBundle } from './validate.js';
 import { scanForSecrets } from '../safety/secret-scan.js';
 
 export interface LoadedSnapshot {
@@ -1036,29 +1471,34 @@ export interface LoadedSnapshot {
 }
 
 export function loadSnapshot(dir: string): LoadedSnapshot {
-  const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as SnapshotManifest;
+  // 1. manifest: scan text → parse → schema-validate (exact keys) → exact-version compat gate
+  const manifestStr = readFileSync(join(dir, 'manifest.json'), 'utf8');
+  scanForSecrets('manifest.json', manifestStr);
+  const manifestRaw = JSON.parse(manifestStr) as unknown;
+  assertValidManifest(manifestRaw);
+  const manifest = manifestRaw as SnapshotManifest;
   assertSnapshotCompatible(manifest.versions);
 
-  const checksums = JSON.parse(
-    readFileSync(join(dir, manifest.checksumsRef), 'utf8'),
-  ) as Record<string, string>;
-
+  // 2. bundle: checksum → scan text → parse → schema-validate (exact keys, additionalProperties:false)
+  const checksums = JSON.parse(readFileSync(join(dir, manifest.checksumsRef), 'utf8')) as Record<string, string>;
   const bundleBuf = readFileSync(join(dir, manifest.bundleRef));
   const expected = checksums[manifest.bundleRef];
   if (!expected) throw new Error(`checksums.json missing entry for ${manifest.bundleRef}`);
   verifyChecksum(manifest.bundleRef, bundleBuf, expected);
 
   const bundleStr = bundleBuf.toString('utf8');
-  scanForSecrets(manifest.bundleRef, bundleStr); // defense-in-depth (fail-closed)
+  scanForSecrets(manifest.bundleRef, bundleStr);
+  const bundleRaw = JSON.parse(bundleStr) as unknown;
+  assertValidBundle(bundleRaw);
+  const bundle = bundleRaw as SnapshotBundle;
 
-  const bundle = JSON.parse(bundleStr) as SnapshotBundle;
   return { dir, manifest, bundle };
 }
 ```
 
-> NOTE: this imports `src/safety/secret-scan.js` (Task 3.1). Implement Task 3.1 first if executing strictly in order; the test above will still fail on the missing safety module until then. Reorder so Phase 3 Task 3.1 precedes this step, or stub `scanForSecrets` as a no-op export and fill it in Task 3.1.
+> Order is load-bearing: manifest is scanned + schema-validated + version-gated BEFORE any bundle work; the bundle is checksum-verified BEFORE it is parsed/validated. Prerequisites (Tasks 2.1–2.4: checksums, compat, schema validation, secret-scan) all precede this task in Phase 2 — no out-of-order stubs needed.
 
-- [ ] **Step 4: Run test to verify it passes** (after Task 3.1 exists)
+- [ ] **Step 4: Run test to verify it passes**
 
 Run: `pnpm vitest run test/snapshot/loader.test.ts`
 Expected: PASS.
@@ -1069,7 +1509,7 @@ Expected: PASS.
 git add -A && git commit -m "feat(snapshot): loader with manifest+compat+checksum+secret-scan (fail-closed)"
 ```
 
-### Task 2.4: Registry (resolve MOCK_SNAPSHOT_REF → dir) + readers
+### Task 2.6: Registry (resolve MOCK_SNAPSHOT_REF → dir) + readers
 
 **Files:**
 - Create: `src/snapshot/registry.ts`, `src/snapshot/readers/runs.ts`, `.../trades.ts`, `.../events.ts`, `.../decisions.ts`, `.../health.ts`, `.../coverage.ts`, `.../analysis.ts`, `.../research.ts`
@@ -1193,77 +1633,10 @@ git add -A && git commit -m "feat(snapshot): registry + per-surface readers over
 
 ---
 
-## Phase 3 — Safety
+## Phase 3 — (folded into Phase 2)
 
-### Task 3.1: Secret / forbidden-pattern scan (defense-in-depth)
-
-**Files:**
-- Create: `src/safety/secret-scan.ts`
-- Test: `test/safety/secret-scan.test.ts`
-
-- [ ] **Step 1: Write the failing test**
-
-```ts
-import { describe, it, expect } from 'vitest';
-import { scanForSecrets } from '../../src/safety/secret-scan.js';
-
-describe('scanForSecrets', () => {
-  it('passes clean sanitized content', () => {
-    expect(() => scanForSecrets('bundle.json', '{"runs":[{"runId":"r_opaque1"}]}')).not.toThrow();
-  });
-  it('fails closed on an exchange API key pattern', () => {
-    expect(() => scanForSecrets('bundle.json', 'key=AKIA1234567890ABCD'))
-      .toThrow(/forbidden pattern/i);
-  });
-  it('fails closed on an absolute host path', () => {
-    expect(() => scanForSecrets('bundle.json', '{"p":"/home/operator/secret.log"}'))
-      .toThrow(/forbidden pattern/i);
-  });
-  it('fails closed on a bearer/JWT-looking token', () => {
-    expect(() => scanForSecrets('bundle.json', 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.aa.bb'))
-      .toThrow(/forbidden pattern/i);
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `pnpm vitest run test/safety/secret-scan.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Write `src/safety/secret-scan.ts`**
-
-```ts
-/** Defense-in-depth blocklist over an already-sanitized snapshot. Sanitization is primarily an
- *  operator-side allowlist projection; this catches leaks that slipped through. Fail closed. */
-const FORBIDDEN: ReadonlyArray<readonly [string, RegExp]> = [
-  ['aws access key', /\bAKIA[0-9A-Z]{16}\b/],
-  ['private key block', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
-  ['jwt / bearer token', /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{2,}\.[A-Za-z0-9_-]{2,}/],
-  ['absolute unix host path', /(?:"|')\/(?:home|root|etc|var|usr|opt)\//],
-  ['windows host path', /[A-Za-z]:\\\\(?:Users|home)\\\\/],
-  ['db connection url', /\b(?:postgres|postgresql|mysql|mongodb):\/\/[^\s"']+/],
-];
-
-export function scanForSecrets(name: string, content: string): void {
-  for (const [label, re] of FORBIDDEN) {
-    if (re.test(content)) {
-      throw new Error(`snapshot safety: forbidden pattern '${label}' detected in ${name} — refusing to load`);
-    }
-  }
-}
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `pnpm vitest run test/safety/secret-scan.test.ts`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A && git commit -m "feat(safety): defense-in-depth secret/forbidden-pattern scan (fail-closed)"
-```
+The defense-in-depth secret/forbidden-pattern scan moved to **Task 2.4** so it precedes the loader
+(the loader scans both manifest and bundle text before parsing). There is no standalone Phase 3.
 
 ---
 
@@ -1500,6 +1873,7 @@ Expected: FAIL — module not found.
 
 ```ts
 import type { PageEnvelope, PageWindow, FreshnessMarker } from '../contract/common/envelopes.js';
+import type { OpsError } from '../contract/common/errors.js';
 
 interface CursorState { readonly offset: number; }
 
@@ -1536,6 +1910,12 @@ export function paginate<T>(
     window: opts.window ?? {},
     freshness: opts.freshness ?? 'fresh',
   };
+}
+
+/** Shared OpsError for a malformed cursor — handlers return this instead of letting paginate throw
+ *  across the transport boundary (which would surface as a 500). */
+export function invalidCursor(): OpsError {
+  return { category: 'validation_error', code: 'invalid_cursor', message: 'invalid cursor' };
 }
 ```
 
@@ -1718,11 +2098,13 @@ Run: `pnpm vitest run test/ops/runs.test.ts`
 ```ts
 import type { SnapshotBundle } from '../../contract/snapshot/bundle.js';
 import type { RunsPage } from '../../contract/ops-read/dto.js';
+import type { OpsError } from '../../contract/common/errors.js';
 import { readRuns, type RunsFilter } from '../../snapshot/readers/runs.js';
-import { paginate } from '../pagination.js';
+import { paginate, invalidCursor } from '../pagination.js';
 
-export function handleRuns(bundle: SnapshotBundle, filter: RunsFilter, asOf: number, cursor?: string): RunsPage {
-  return paginate(readRuns(bundle, filter), cursor, undefined, { asOf });
+export function handleRuns(bundle: SnapshotBundle, filter: RunsFilter, asOf: number, cursor?: string): RunsPage | OpsError {
+  try { return paginate(readRuns(bundle, filter), cursor, undefined, { asOf }); }
+  catch { return invalidCursor(); }
 }
 ```
 
@@ -1738,11 +2120,12 @@ export function handleSummary(bundle: SnapshotBundle, runIdRaw: string, asOf: nu
   let runId: string;
   try { runId = decodeId('run', runIdRaw); }
   catch { return { category: 'validation_error', code: 'invalid_run_id', message: 'invalid run id' }; }
-  const trades = readTrades(bundle, runId);
-  if (trades.length === 0 && !bundle.tradesByRun[runId]) {
+  // Existence is decided by the runs list, NOT by whether trades exist: a real run with zero
+  // trades returns a ZERO aggregate; 404 only when the run id is not in bundle.runs.
+  if (!bundle.runs.some((r) => r.runId === runId)) {
     return { category: 'not_found', code: 'run_not_found', message: 'run not found' };
   }
-  return aggregate(runId, trades, asOf);
+  return aggregate(runId, readTrades(bundle, runId), asOf);
 }
 
 function aggregate(runId: string, trades: readonly ClosedTrade[], asOf: number): RunSummary {
@@ -1771,11 +2154,13 @@ function aggregate(runId: string, trades: readonly ClosedTrade[], asOf: number):
 ```ts
 import type { SnapshotBundle } from '../../contract/snapshot/bundle.js';
 import type { TradesPage } from '../../contract/ops-read/dto.js';
+import type { OpsError } from '../../contract/common/errors.js';
 import { readTrades } from '../../snapshot/readers/trades.js';
-import { paginate } from '../pagination.js';
+import { paginate, invalidCursor } from '../pagination.js';
 
-export function handleTrades(bundle: SnapshotBundle, runId: string, asOf: number, cursor?: string): TradesPage {
-  return paginate(readTrades(bundle, runId), cursor, undefined, { asOf });
+export function handleTrades(bundle: SnapshotBundle, runId: string, asOf: number, cursor?: string): TradesPage | OpsError {
+  try { return paginate(readTrades(bundle, runId), cursor, undefined, { asOf }); }
+  catch { return invalidCursor(); }
 }
 ```
 
@@ -1783,11 +2168,13 @@ export function handleTrades(bundle: SnapshotBundle, runId: string, asOf: number
 ```ts
 import type { SnapshotBundle } from '../../contract/snapshot/bundle.js';
 import type { EventsPage } from '../../contract/ops-read/dto.js';
+import type { OpsError } from '../../contract/common/errors.js';
 import { readEvents } from '../../snapshot/readers/events.js';
-import { paginate } from '../pagination.js';
+import { paginate, invalidCursor } from '../pagination.js';
 
-export function handleEvents(bundle: SnapshotBundle, runId: string, asOf: number, cursor?: string): EventsPage {
-  return paginate(readEvents(bundle, runId), cursor, undefined, { asOf });
+export function handleEvents(bundle: SnapshotBundle, runId: string, asOf: number, cursor?: string): EventsPage | OpsError {
+  try { return paginate(readEvents(bundle, runId), cursor, undefined, { asOf }); }
+  catch { return invalidCursor(); }
 }
 ```
 
@@ -1795,11 +2182,13 @@ export function handleEvents(bundle: SnapshotBundle, runId: string, asOf: number
 ```ts
 import type { SnapshotBundle } from '../../contract/snapshot/bundle.js';
 import type { DecisionsPage } from '../../contract/ops-read/dto.js';
+import type { OpsError } from '../../contract/common/errors.js';
 import { readDecisions } from '../../snapshot/readers/decisions.js';
-import { paginate } from '../pagination.js';
+import { paginate, invalidCursor } from '../pagination.js';
 
-export function handleDecisions(bundle: SnapshotBundle, runId: string, asOf: number, cursor?: string): DecisionsPage {
-  return paginate(readDecisions(bundle, runId), cursor, undefined, { asOf });
+export function handleDecisions(bundle: SnapshotBundle, runId: string, asOf: number, cursor?: string): DecisionsPage | OpsError {
+  try { return paginate(readDecisions(bundle, runId), cursor, undefined, { asOf }); }
+  catch { return invalidCursor(); }
 }
 ```
 
@@ -1833,6 +2222,12 @@ import { isOpsError } from '../../src/contract/common/errors.js';
 import type { SnapshotBundle } from '../../src/contract/snapshot/bundle.js';
 
 const bundle = {
+  runs: [
+    { runId: 'r1', mode: 'paper', status: 'finished', strategy: { name: 's', version: '1' },
+      startedAtMs: 1, finishedAtMs: 9, lastSeenMs: 9, symbols: ['BTCUSDT'] },
+    { runId: 'r2', mode: 'live', status: 'running', strategy: { name: 's', version: '1' },
+      startedAtMs: 1, finishedAtMs: null, lastSeenMs: 2, symbols: ['ETHUSDT'] },
+  ],
   tradesByRun: {
     r1: [
       { tradeId: 't1', runId: 'r1', symbol: 'BTCUSDT', side: 'long', openedAtMs: 1, closedAtMs: 2,
@@ -1853,7 +2248,15 @@ describe('handleSummary', () => {
     expect(s.losses).toBe(1);
     expect(s.pnlUsd).toBe('6.00000000');
   });
-  it('returns not_found for an unknown run', () => {
+  it('returns a ZERO aggregate for a real run with no trades (NOT 404)', () => {
+    const s = handleSummary(bundle, 'r2', 100);
+    expect(isOpsError(s)).toBe(false);
+    if (isOpsError(s)) return;
+    expect(s.closedTrades).toBe(0);
+    expect(s.wins).toBe(0);
+    expect(s.pnlUsd).toBe('0.00000000');
+  });
+  it('returns not_found ONLY when the run id is absent from bundle.runs', () => {
     const s = handleSummary(bundle, 'rX', 100);
     expect(isOpsError(s) && s.category).toBe('not_found');
   });
@@ -2349,6 +2752,14 @@ describe('ops read http app', () => {
     const res = await makeApp().request('/ops/runs', { method: 'POST' });
     expect(res.status).toBe(404); // no POST route registered
   });
+  it.each(['/ops/runs', '/ops/trades?runId=r1', '/ops/events?runId=r1', '/ops/decisions?runId=r1'])(
+    'returns 400 invalid_cursor (not 500) for a malformed cursor on %s', async (base) => {
+      const sep = base.includes('?') ? '&' : '?';
+      const res = await makeApp().request(`${base}${sep}cursor=not-a-cursor`);
+      expect(res.status).toBe(400);
+      const body = await res.json() as { code: string };
+      expect(body.code).toBe('invalid_cursor');
+    });
 });
 ```
 
@@ -2359,7 +2770,7 @@ Run: `pnpm vitest run test/http/app.test.ts`
 - [ ] **Step 3: Write `src/http/app.ts`**
 
 ```ts
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { createNodeWebSocket } from '@hono/node-ws';
 import type { LoadedSnapshot } from '../snapshot/loader.js';
 import { authorize, bearerFromHeader } from '../access/auth.js';
@@ -2404,18 +2815,18 @@ export function createApp(deps: AppDeps) {
     await next();
   });
 
-  const respond = (c: Parameters<Parameters<typeof app.get>[1]>[0], result: unknown) =>
+  const respond = (c: Context, result: unknown) =>
     isOpsError(result) ? c.json(result, httpStatus(result)) : c.json(result as object, 200);
 
   app.get('/ops/discover', (c) => c.json(buildDiscover(), 200));
-  app.get('/ops/runs', (c) => c.json(handleRuns(bundle,
+  app.get('/ops/runs', (c) => respond(c, handleRuns(bundle,
     { mode: c.req.query('mode'), status: c.req.query('status'), symbol: c.req.query('symbol') },
-    now(), c.req.query('cursor')), 200));
+    now(), c.req.query('cursor'))));
   app.get('/ops/runs/:runId/summary', (c) => respond(c, handleSummary(bundle, c.req.param('runId'), now())));
   app.get('/ops/runs/:runId/analysis', (c) => respond(c, handleAnalysis(bundle, c.req.param('runId'))));
-  app.get('/ops/trades', (c) => c.json(handleTrades(bundle, c.req.query('runId') ?? '', now(), c.req.query('cursor')), 200));
-  app.get('/ops/events', (c) => c.json(handleEvents(bundle, c.req.query('runId') ?? '', now(), c.req.query('cursor')), 200));
-  app.get('/ops/decisions', (c) => c.json(handleDecisions(bundle, c.req.query('runId') ?? '', now(), c.req.query('cursor')), 200));
+  app.get('/ops/trades', (c) => respond(c, handleTrades(bundle, c.req.query('runId') ?? '', now(), c.req.query('cursor'))));
+  app.get('/ops/events', (c) => respond(c, handleEvents(bundle, c.req.query('runId') ?? '', now(), c.req.query('cursor'))));
+  app.get('/ops/decisions', (c) => respond(c, handleDecisions(bundle, c.req.query('runId') ?? '', now(), c.req.query('cursor'))));
   app.get('/ops/health/runtime', (c) => c.json(handleRuntimeHealth(bundle), 200));
   app.get('/ops/health/market', (c) => c.json(handleMarketHealth(bundle), 200));
   app.get('/ops/health/execution', (c) => c.json(handleExecutionHealth(bundle), 200));
@@ -2434,7 +2845,7 @@ export function createApp(deps: AppDeps) {
 }
 ```
 
-> NOTE: `/ops/events` is registered twice (HTTP GET list handler AND the WS upgrade). Hono dispatches the upgrade only for WebSocket requests; a plain GET hits the list handler. Keep both registrations.
+> EXPLICIT ROUTE STRATEGY for `/ops/events` — it is registered twice and ORDER is load-bearing: the HTTP GET list handler is registered FIRST, the WS `upgradeWebSocket` route SECOND. A plain GET matches the list handler first and returns JSON (the WS route is never reached for non-upgrade requests); a real WebSocket upgrade is intercepted by `injectWebSocket` at the server level and routed to the `upgradeWebSocket` handler regardless of order. Both registrations are required; do NOT reorder. Task 8.2 verifies both behaviors against a live server.
 
 - [ ] **Step 4: Run it — Expected: PASS.**
 
@@ -2446,7 +2857,92 @@ Run: `pnpm vitest run test/http/app.test.ts`
 git add -A && git commit -m "feat(http): Hono app — ops read routes + auth middleware + WS replay upgrade"
 ```
 
-### Task 8.2: Entrypoint
+### Task 8.2: `/ops/events` shared HTTP + WS path (verify both behaviors)
+
+**Files:**
+- Test: `test/http/events-path.test.ts`
+
+> Verifies the explicit route strategy from Task 8.1 against a REAL server: a plain GET returns an
+> `EventsPage`, and a WebSocket upgrade on the SAME path streams a `LiveUpdate`. Uses an ephemeral port
+> and Node's global `WebSocket` client (Node 22+).
+
+- [ ] **Step 1: Write the test**
+
+```ts
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { serve, type ServerType } from '@hono/node-server';
+import { createApp } from '../../src/http/app.js';
+import type { LoadedSnapshot } from '../../src/snapshot/loader.js';
+
+const snap = {
+  dir: '.', manifest: {} as never,
+  bundle: {
+    runs: [{ runId: 'r1', mode: 'live', status: 'running', strategy: { name: 's', version: '1' },
+      startedAtMs: 1, finishedAtMs: null, lastSeenMs: 2, symbols: ['BTCUSDT'] }],
+    tradesByRun: {}, eventsByRun: { r1: [{ category: 'startup', severity: 'info', runId: 'r1',
+      tradeId: null, tsMs: 1, safeMessage: 'ok' }] }, decisionsByRun: {},
+    runtimeHealth: { entries: [], asOf: 1 },
+    marketHealth: { status: 'ok', diagnostics: {}, streamAgeMs: null, availability: 'available', asOf: 1 },
+    executionHealth: { status: 'ok', recentCounts: {}, lastEventMs: null, availability: 'unavailable', asOf: 1 },
+    coverage: { entries: [], availability: 'available', asOf: 1 },
+    analysisByRun: {}, researchByRun: {},
+    replay: { frames: [{ offsetMs: 0, resource: 'runs' }] },
+  },
+} as unknown as LoadedSnapshot;
+
+let server: ServerType;
+let port: number;
+
+beforeAll(async () => {
+  const built = createApp({ snapshot: snap, tokenAllowlist: [], replay: { mode: 'once', speed: 1000 } });
+  await new Promise<void>((resolve) => {
+    server = serve({ fetch: built.app.fetch, hostname: '127.0.0.1', port: 0 }, (info) => {
+      port = info.port; resolve();
+    });
+    built.injectWebSocket(server);
+  });
+});
+afterAll(() => { server.close(); });
+
+describe('/ops/events on one path', () => {
+  it('plain GET returns an EventsPage (items array)', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/ops/events?runId=r1`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { items: unknown[]; nextCursor: unknown };
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(1);
+  });
+
+  it('WebSocket upgrade on the same path streams a LiveUpdate', async () => {
+    const raw = await new Promise<string>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ops/events`);
+      const timer = setTimeout(() => { ws.close(); reject(new Error('no WS message within 2s')); }, 2000);
+      ws.onmessage = (e) => { clearTimeout(timer); resolve(String(e.data)); ws.close(); };
+      ws.onerror = () => { clearTimeout(timer); reject(new Error('ws error')); };
+    });
+    const update = JSON.parse(raw) as { resource: string; asOf: number; payload: unknown };
+    expect(update.resource).toBe('runs');           // first replay frame at offset 0
+    expect(typeof update.asOf).toBe('number');
+  });
+});
+```
+
+- [ ] **Step 2: Run it — Expected: PASS** (GET → EventsPage; WS → LiveUpdate `resource:'runs'`).
+
+Run: `pnpm vitest run test/http/events-path.test.ts`
+
+> If the GET returns a non-JSON/upgrade response, the WS route was matched before the JSON route —
+> reorder so the JSON `app.get('/ops/events', ...)` is registered BEFORE the `upgradeWebSocket` route
+> (Task 8.1). If the WS never receives a message, confirm `injectWebSocket(server)` runs after `serve(...)`
+> and that the fixture's first replay frame has `offsetMs: 0`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -A && git commit -m "test(http): /ops/events serves HTTP EventsPage and WS LiveUpdate on one path"
+```
+
+### Task 8.3: Entrypoint
 
 **Files:**
 - Create: `src/bin/start-mock-ops.ts`
@@ -2708,6 +3204,7 @@ dist
 *.log
 /data/snapshots/*
 !/data/snapshots/fixtures
+!/data/snapshots/fixtures/**
 ```
 
 - [ ] **Step 2: Create `Dockerfile`** (build context = this repo only; no `file:` deps, no private registry, no GitHub auth)
@@ -2863,19 +3360,22 @@ git add -A && git commit -m "docs: README, CLAUDE.md guardrails, snapshot/saniti
 
 **1. Spec coverage** — mapping each requirement to a task:
 - Standalone boundary, no npm import from platform → Tasks 0, 1.7 (isolation guard), 10.1 (Docker independence).
-- Snapshot-backed storage + registry/loader + tiny fixture → Tasks 2.1–2.4, 9.1.
+- Snapshot-backed storage + registry/loader + tiny fixture → Tasks 2.1–2.6, 9.1.
+- Snapshot runtime schema validation (`additionalProperties:false`; unknown field fails closed; applied to manifest AND bundle) → Task 2.3, enforced in loader 2.5.
 - Ops Read HTTP endpoints (P0+P1-lite) → Tasks 5.3–5.5, 8.1.
 - Rich analysis (Tier-2, capability-aware) → Tasks 1.3, 5.5, 9.1.
-- WS replay (once/loop/speed, deterministic, runs+runtime-health) → Tasks 6.1–6.2, 8.1.
-- Safety/privacy (read-only, no creds/DB/exchange, fail-closed, audit, sanitization, manifest/checksums) → Tasks 2.1–2.3, 3.1, 4.1–4.2, 8.1, 10.2.
+- WS replay (once/loop/speed, deterministic, runs+runtime-health) → Tasks 6.1–6.2, 8.1; one-path HTTP+WS coexistence verified → Task 8.2.
+- Safety/privacy (read-only, no creds/DB/exchange, fail-closed, audit, sanitization, manifest/checksums) → Tasks 2.1 (checksums), 2.2 (compat), 2.3 (schema), 2.4 (secret-scan, manifest+bundle), 2.5 (loader), 4.1–4.2, 8.1, 10.2.
+- Invalid cursor → `OpsError validation_error/invalid_cursor` + HTTP 400 (never throws to transport) → Tasks 5.1 (`invalidCursor`), 5.4 (list handlers), 8.1 (`respond` + 400 tests).
+- Summary: a real run with zero trades returns a ZERO aggregate; 404 only when the run id is absent from `bundle.runs` → Task 5.4.
 - Research Read seam (Surface B, mutating/backtest unavailable) → Tasks 1.4, 7.1.
-- Contract versioning (7 versions, fail-closed on unsupported) → Tasks 1.5, 2.2.
+- Contract versioning (7 versions; **exact-match** gate, fail-closed; ops.2 ≠ ops.3) → Tasks 1.5, 2.2; schema-version surface in manifest schema → Task 2.3.
 - Docker: office/lab run against mock without private build → Tasks 10.1, 10.2.
 - Future backtester boundary (seam only) → Task 10.2 (`future-historical.md`).
 - Out of scope honored: no exporter code, no backtesting, no positions/state/log-refs/candidates, no parquet/market-bar ingestion → reflected by their absence + docs.
 
-**2. Placeholder scan** — Tasks 10.2 Steps 2–4 describe doc files by content outline rather than full prose; that is acceptable for prose docs but each lists exactly what must be written. All *code* steps contain complete code. No `TODO`/"add error handling"/"similar to Task N" in code steps.
+**2. Placeholder scan** — Task 10.2 Steps 2–4 describe doc files by content outline rather than full prose; acceptable for prose docs, and each lists exactly what must be written. All *code* steps contain complete code. No `TODO`/"add error handling"/"similar to Task N" in code steps.
 
-**3. Type consistency** — `SnapshotBundle` field names (`tradesByRun`, `eventsByRun`, `decisionsByRun`, `analysisByRun`, `researchByRun`, `runtimeHealth`, `marketHealth`, `executionHealth`, `coverage`, `replay.frames`) are used identically across readers (2.4), handlers (5.4–5.5), replay (6.1), fixture (9.1), and tests. `LiveUpdate`/`ReplayStep`, `MockConfig`, `AuthResult`, `OpsError`, `PageEnvelope`, `AnalysisSnapshot`/`Capable`/`CapabilityAbsent`, `ResearchCapabilityDescriptor` are each defined once and reused by exact name. Handler names (`handleRuns`/`handleSummary`/`handleTrades`/`handleEvents`/`handleDecisions`/`handleRuntimeHealth`/`handleMarketHealth`/`handleExecutionHealth`/`handleCoverage`/`handleAnalysis`) match between definitions, the app (8.1), and tests.
+**3. Type consistency** — `SnapshotBundle` field names (`tradesByRun`, `eventsByRun`, `decisionsByRun`, `analysisByRun`, `researchByRun`, `runtimeHealth`, `marketHealth`, `executionHealth`, `coverage`, `replay.frames`) are used identically across the schema (2.3), readers (2.6), handlers (5.4–5.5), replay (6.1), fixture (9.1), and tests. List handlers `handleRuns`/`handleTrades`/`handleEvents`/`handleDecisions` consistently return `Page | OpsError` and the app routes them through `respond` (8.1). `LiveUpdate`/`ReplayStep`, `MockConfig`, `AuthResult`, `OpsError`, `PageEnvelope`, `AnalysisSnapshot`/`Capable`/`CapabilityAbsent`, `ResearchCapabilityDescriptor`, `invalidCursor` are each defined once and reused by exact name. Handler names match between definitions, the app (8.1), and tests.
 
-**Ordering note for executors:** Task 2.3 (loader) imports `src/safety/secret-scan.ts` from Task 3.1. Implement **Phase 3 Task 3.1 before Phase 2 Task 2.3** (or land the loader with a no-op `scanForSecrets` and wire the real one in 3.1). All other tasks are in dependency order.
+**Execution order:** Phase 2 is strictly ordered — checksums (2.1) → compat exact-match (2.2) → schema validation (2.3) → secret-scan (2.4) → loader (2.5, depends on 2.1–2.4) → registry+readers (2.6). All other tasks are already in dependency order; no out-of-order stubs are required.

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+# real sanitized snapshots are mounted at runtime, never committed
+/data/snapshots/*
+!/data/snapshots/.gitkeep
+!/data/snapshots/fixtures/
+!/data/snapshots/fixtures/**
