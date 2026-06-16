@@ -38,3 +38,21 @@ TRADING_PLATFORM_READ_TOKEN=<non-empty>
 Read-only; sha256-hashed token allowlist; loopback by default; fail-closed if bound non-loopback without a token.
 Snapshots are verified on load (manifest + checksums + version-compat + secret-scan). The exporter/sanitizer
 runs operator-side near the private platform and is out of scope here — see `docs/contracts/`.
+
+## CI guard
+
+Every PR to `main` (and every push to `main`) runs `.github/workflows/ci.yml` — two parallel jobs:
+
+- **checks:** `pnpm check` (typecheck + contract-isolation + tests) → `pnpm verify:no-forbidden-deps` → `pnpm verify:no-secrets`
+- **docker:** `docker build` (public deps only, no registry/private access)
+
+What it enforces, automatically:
+- types + tests (`pnpm check`)
+- `src/contract/**` import isolation
+- no secrets / forbidden patterns in committed data files (`.json`/`.parquet`/`.env`/… anywhere; `src`/`test`/`docs` and `.gitkeep` excluded)
+- no private/forbidden dependencies — runtime `dependencies` allowlist + a denylist (`trading-platform`, `pg`, `ccxt`, exchange SDKs) across the lockfile + a ban on `file:`/`link:`/`git+`/`workspace:` specifiers
+- the image builds with public deps only
+
+Run all of it locally with `pnpm check:ci`.
+
+**Manual operator step (one-time):** enable branch protection on `main` requiring the **`checks`** and **`docker`** status checks before merge (GitHub → Settings → Branches → Branch protection rules). CI cannot set this itself.
