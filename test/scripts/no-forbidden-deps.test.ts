@@ -34,7 +34,11 @@ describe('verify_no_forbidden_deps', () => {
     expectFail(fixture({ dependencies: {} }, 'packages:\n  ccxt@4.5.51:\n    resolution: {}\n'), /ccxt/i);
   });
   it('fails on the private platform package in the lockfile', () => {
-    expectFail(fixture({ dependencies: {} }, "packages:\n  '@trading-platform/sdk@0.3.0':\n"), /@trading-platform/i);
+    expectFail(fixture({ dependencies: {} }, "packages:\n  '@trading-platform/platform@1.0.0':\n"), /@trading-platform\/platform/i);
+  });
+  it('allows the vendored @trading-platform/sdk in the lockfile (A3 carve-out)', () => {
+    // feature 004: @trading-platform/sdk is the one admitted @trading-platform/* scope member.
+    expect(() => runOK(fixture({ dependencies: {} }, "packages:\n  '@trading-platform/sdk@0.3.0':\n"))).not.toThrow();
   });
   it('fails on a non-registry specifier', () => {
     expectFail(fixture({ dependencies: {}, devDependencies: { x: 'file:./x' } }), /non-registry/i);
