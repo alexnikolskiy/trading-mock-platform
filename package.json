@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify:contract-isolation": "node scripts/verify_contract_isolation.mjs",
+    "verify:contract-isolation": "tsx scripts/verify_contract_isolation.ts",
     "verify:no-forbidden-deps": "node scripts/verify_no_forbidden_deps.mjs",
     "verify:no-secrets": "tsx scripts/verify_no_secrets.ts",
     "check": "pnpm typecheck && pnpm verify:contract-isolation && pnpm test",
