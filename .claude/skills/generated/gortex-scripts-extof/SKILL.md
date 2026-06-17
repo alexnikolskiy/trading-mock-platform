@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `scripts/verify_no_secrets.ts` | path, basename, i, p, extOf, ... |
+| `scripts/verify_no_secrets.ts` | path, extOf, i, b, p, ... |
 
 ## Entry Points
 

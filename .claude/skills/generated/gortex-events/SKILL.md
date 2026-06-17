@@ -17,8 +17,8 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/events/replay.ts` | projectionFor, LiveUpdate, resource, speed, prevOffset, ... |
-| `src/events/ws-adapter.ts` | step, timers, steps, opts, ReplayOptions, ... |
+| `src/events/replay.ts` | speed, projectionFor, buildReplaySequence, ReplayStep, asOf, ... |
+| `src/events/ws-adapter.ts` | opts, cancelled, ws, bundle, step, ... |
 
 ## Entry Points
 

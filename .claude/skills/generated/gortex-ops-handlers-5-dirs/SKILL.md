@@ -26,13 +26,13 @@ Use this skill when working on files in:
 |------|---------|
 | `src/contract/analysis/dto.ts` | AnalysisSnapshot |
 | `src/contract/common/errors.ts` | OpsError |
-| `src/contract/ops-read/dto.local.ts` | DecisionsPage, TradesPage, EventsPage |
+| `src/contract/ops-read/dto.local.ts` | DecisionsPage, EventsPage, TradesPage |
 | `src/ops/handlers/analysis.ts` | runIdRaw, handleAnalysis, a, bundle, runId |
-| `src/ops/handlers/decisions.ts` | asOf, handleDecisions, runId, bundle, cursor |
-| `src/ops/handlers/events.ts` | asOf, cursor, bundle, runId, handleEvents |
-| `src/ops/handlers/trades.ts` | asOf, bundle, runId, cursor, handleTrades |
+| `src/ops/handlers/decisions.ts` | cursor, asOf, runId, bundle, handleDecisions |
+| `src/ops/handlers/events.ts` | bundle, asOf, runId, handleEvents, cursor |
+| `src/ops/handlers/trades.ts` | runId, cursor, asOf, bundle, handleTrades |
 | `src/ops/pagination.ts` | invalidCursor |
-| `src/snapshot/readers/analysis.ts` | b, runId, readAnalysis |
+| `src/snapshot/readers/analysis.ts` | b, readAnalysis, runId |
 
 ## Entry Points
 

@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/bin/start-research-mcp.ts` | snapshotRef, server, auth, env, allowlist, ... |
+| `src/bin/start-research-mcp.ts` | snapshotDir, server, main, auth, snapshot, ... |
 
 ## Entry Points
 

@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/ops/handlers/summary.ts` | bundle, t, reason, pnl, asOf, ... |
+| `src/ops/handlers/summary.ts` | runId, reason, p, losses, asOf, ... |
 
 ## Entry Points
 

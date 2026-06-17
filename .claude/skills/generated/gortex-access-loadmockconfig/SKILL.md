@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/access/config.ts` | port, MockConfig, tokenAllowlist, replaySpeed, replayMode, ... |
+| `src/access/config.ts` | tokenAllowlist, replaySpeed, env, MockConfig, loadMockConfig, ... |
 
 ## Entry Points
 

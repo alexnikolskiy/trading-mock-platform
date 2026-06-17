@@ -18,7 +18,7 @@ Use this skill when working on files in:
 | File | Symbols |
 |------|---------|
 | `src/contract/research-read/dto.ts` | ResearchMetrics |
-| `src/research-read/mcp/projections.ts` | mdd, toNum, s, n, pnl, ... |
+| `src/research-read/mcp/projections.ts` | n, toNum, pf, sh, mdd, ... |
 
 ## Entry Points
 

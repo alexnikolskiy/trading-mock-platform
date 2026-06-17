@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/ops/pagination.ts` | cursor, obj, encodeCursor, opts, lim, ... |
+| `src/ops/pagination.ts` | s, decodeCursor, paginate, nextCursor, all, ... |
 
 ## Entry Points
 

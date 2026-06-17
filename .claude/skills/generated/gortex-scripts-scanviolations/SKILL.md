@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `scripts/verify_contract_isolation.ts` | name, climbs, scanViolations, main, m, ... |
+| `scripts/verify_contract_isolation.ts` | dir, depth, m, isRelative, walk, ... |
 
 ## Entry Points
 

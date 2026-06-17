@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/http/app.ts` | deps, e, runsFilter, app, bundle, ... |
+| `src/http/app.ts` | runsFilter, httpStatus, createApp, AppDeps, status, ... |
 
 ## Entry Points
 

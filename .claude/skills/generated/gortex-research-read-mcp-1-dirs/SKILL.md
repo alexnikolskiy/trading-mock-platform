@@ -18,9 +18,9 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/contract/research-read/mcp/dto.ts` | GatewayErrorCategory, GatewayError, RunResultResult, RunStatus, RunStatusResult, ... |
-| `src/research-read/mcp/errors.ts` | message, gatewayError, code, category |
-| `src/research-read/mcp/projections.ts` | statusView, summary, status, status, research, ... |
+| `src/contract/research-read/mcp/dto.ts` | RunResultResult, GatewayErrorCategory, RunStatus, RunStatusView, RunStatusResult, ... |
+| `src/research-read/mcp/errors.ts` | category, code, gatewayError, message |
+| `src/research-read/mcp/projections.ts` | runId, status, runId, summary, botStatus, ... |
 
 ## Entry Points
 

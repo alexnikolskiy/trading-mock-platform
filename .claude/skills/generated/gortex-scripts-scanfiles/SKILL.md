@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `scripts/verify_no_secrets.ts` | content, tracked, out, inScopePaths, hits, ... |
+| `scripts/verify_no_secrets.ts` | entries, entries, violations, inScopePaths, hits, ... |
 
 ## Entry Points
 

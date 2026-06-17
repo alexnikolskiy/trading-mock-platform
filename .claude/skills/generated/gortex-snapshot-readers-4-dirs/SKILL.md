@@ -25,23 +25,23 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/contract/ops-read/dto.local.ts` | RuntimeHealthCollection, MarketServiceHealthSnapshot, SourceCoverageSnapshot, ExecutionHealthSnapshot |
+| `src/contract/ops-read/dto.local.ts` | RuntimeHealthCollection, SourceCoverageSnapshot, MarketServiceHealthSnapshot, ExecutionHealthSnapshot |
 | `src/contract/snapshot/bundle.ts` | SnapshotBundle |
 | `src/events/replay.ts` | bundle, bundle |
-| `src/ops/handlers/coverage.ts` | kind, source, b, handleCoverage |
-| `src/ops/handlers/health.ts` | b, b, handleRuntimeHealth, handleMarketHealth, handleExecutionHealth, ... |
-| `src/snapshot/readers/coverage.ts` | readCoverage, kind, source, b |
-| `src/snapshot/readers/decisions.ts` | runId, readDecisions, bundle |
+| `src/ops/handlers/coverage.ts` | handleCoverage, b, kind, source |
+| `src/ops/handlers/health.ts` | handleMarketHealth, handleRuntimeHealth, b, handleExecutionHealth, b, ... |
+| `src/snapshot/readers/coverage.ts` | kind, b, readCoverage, source |
+| `src/snapshot/readers/decisions.ts` | runId, bundle, readDecisions |
 | `src/snapshot/readers/events.ts` | bundle, readEvents, runId |
-| `src/snapshot/readers/health.ts` | readRuntimeHealth, b, readExecutionHealth, b, readMarketHealth, ... |
-| `src/snapshot/readers/trades.ts` | runId, bundle, readTrades |
+| `src/snapshot/readers/health.ts` | b, readRuntimeHealth, b, readMarketHealth, b, ... |
+| `src/snapshot/readers/trades.ts` | bundle, readTrades, runId |
 
 ## Entry Points
 
-- `src/ops/handlers/health.ts::handleMarketHealth`
-- `src/ops/handlers/coverage.ts::handleCoverage`
 - `src/ops/handlers/health.ts::handleExecutionHealth`
 - `src/ops/handlers/health.ts::handleRuntimeHealth`
+- `src/ops/handlers/coverage.ts::handleCoverage`
+- `src/ops/handlers/health.ts::handleMarketHealth`
 - `src/snapshot/readers/coverage.ts::readCoverage`
 
 ## How to Explore
@@ -49,7 +49,7 @@ Use this skill when working on files in:
 ```
 get_communities with id: "community-13"
 smart_context with task: "understand snapshot/readers +4 dirs", format: "gcx"
-find_usages with id: "src/ops/handlers/health.ts::handleMarketHealth", format: "gcx"
+find_usages with id: "src/ops/handlers/health.ts::handleExecutionHealth", format: "gcx"
 ```
 
 _`format: "gcx"` returns the [GCX1 compact wire format](../../docs/wire-format.md) — round-trippable, ~27% fewer tokens than JSON. Drop it for JSON output; agents using `@gortex/wire` or the Go `github.com/gortexhq/gcx-go` package decode either._

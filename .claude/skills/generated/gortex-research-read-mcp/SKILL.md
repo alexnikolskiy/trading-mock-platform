@@ -17,7 +17,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `test/research-read/mcp/integration.test.ts` | parseToolResult, res, name, callTool, content, ... |
+| `test/research-read/mcp/integration.test.ts` | content, res, text, parseToolResult, name, ... |
 | `test/research-read/mcp/server.test.ts` | parse, res |
 
 ## How to Explore

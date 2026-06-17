@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/safety/secret-scan.ts` | re, name, content, content, scanText, ... |
+| `src/safety/secret-scan.ts` | scanForSecrets, name, content, content, scanText, ... |
 
 ## Entry Points
 

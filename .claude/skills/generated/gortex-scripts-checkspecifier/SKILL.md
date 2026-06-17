@@ -16,7 +16,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `scripts/verify_vendored_sdk.ts` | errs, m, main, errs, e, ... |
+| `scripts/verify_vendored_sdk.ts` | tarball, pkg, e, version, errs, ... |
 
 ## Entry Points
 

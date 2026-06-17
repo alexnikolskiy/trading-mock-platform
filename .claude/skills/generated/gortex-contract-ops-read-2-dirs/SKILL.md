@@ -19,8 +19,8 @@ Use this skill when working on files in:
 | File | Symbols |
 |------|---------|
 | `src/contract/ops-read/dto.local.ts` | RunsPage |
-| `src/ops/handlers/runs.ts` | handleRuns, asOf, cursor, bundle, filter |
-| `src/snapshot/readers/runs.ts` | f, readRuns, bundle, RunsFilter |
+| `src/ops/handlers/runs.ts` | handleRuns, bundle, asOf, cursor, filter |
+| `src/snapshot/readers/runs.ts` | f, RunsFilter, readRuns, bundle |
 
 ## Entry Points
 

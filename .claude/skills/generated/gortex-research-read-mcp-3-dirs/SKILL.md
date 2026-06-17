@@ -22,11 +22,11 @@ Use this skill when working on files in:
 | File | Symbols |
 |------|---------|
 | `src/contract/research-read/dto.ts` | ResearchCapabilityDescriptor |
-| `src/contract/research-read/mcp/dto.ts` | ListDatasetsResult, GatewayFailure |
+| `src/contract/research-read/mcp/dto.ts` | GatewayFailure, ListDatasetsResult |
 | `src/research-read/capabilities.ts` | researchCapabilities |
 | `src/research-read/mcp/errors.ts` | backtestUnavailable |
 | `src/research-read/mcp/projections.ts` | listDatasets, discoverDescriptor |
-| `src/research-read/mcp/server.ts` | ctx, McpToolResult, a, args, ctx, ... |
+| `src/research-read/mcp/server.ts` | args, buildResearchServer, server, name, ToolCtx, ... |
 
 ## Entry Points
 

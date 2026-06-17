@@ -18,7 +18,7 @@ Use this skill when working on files in:
 
 | File | Symbols |
 |------|---------|
-| `src/snapshot/loader.ts` | bundle, manifestStr, expected, bundleStr, loadSnapshot, ... |
+| `src/snapshot/loader.ts` | checksums, bundleStr, bundleBuf, manifestRaw, expected, ... |
 | `src/snapshot/registry.ts` | openSnapshot, rootDir, ref |
 | `src/snapshot/validate.ts` | assertValidManifest, obj, obj, assertValidBundle |
 

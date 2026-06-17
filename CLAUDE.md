@@ -3,9 +3,9 @@
 
 - **Languages:** typescript (primary), contract, dockerfile, gitignore, go, javascript, json, markdown, mcp_config, yaml
 - **Entry points:** `scripts/verify_contract_isolation.ts`, `scripts/verify_no_secrets.ts`, `src/bin/start-research-mcp.ts`, `scripts/verify_vendored_sdk.ts`, `src/bin/start-mock-ops.ts`
-- **Most-referenced symbols:** `now` (7 usages), `gatewayError` (7 usages), `asResult` (6 usages), `respond` (6 usages), `toNum` (4 usages), `check` (4 usages), `basename` (2 usages), `statusView` (2 usages), `mapStatus` (2 usages), `runPass` (2 usages)
-- **Graph size:** 1536 nodes, 2125 edges
-- **Breakdown:** 3 config_keys, 18 contracts, 151 docs, 124 files, 101 functions, 1 generic_params, 3 images, 251 imports, 64 interfaces, 122 locals, 10 modules, 140 params, 2 resources, 1 strings, 4 todos, 38 types, 503 variables
+- **Most-referenced symbols:** `now` (7 usages), `gatewayError` (7 usages), `asResult` (6 usages), `respond` (6 usages), `toNum` (4 usages), `check` (4 usages), `walk` (2 usages), `statusView` (2 usages), `basename` (2 usages), `mapStatus` (2 usages)
+- **Graph size:** 1540 nodes, 2128 edges
+- **Breakdown:** 3 config_keys, 18 contracts, 151 docs, 125 files, 101 functions, 1 generic_params, 3 images, 251 imports, 64 interfaces, 122 locals, 10 modules, 140 params, 2 resources, 1 strings, 4 todos, 38 types, 506 variables
 
 ## MANDATORY: Use Gortex MCP tools instead of Read/Grep/Glob
 
@@ -40,20 +40,20 @@ These are not suggestions — run each step at the trigger.
 | Research Read Mcp 1 Dirs | 28 symbols | `/gortex-research-read-mcp-1-dirs` |
 | Http Createapp | 22 symbols | `/gortex-http-createapp` |
 | Scripts Scanviolations | 21 symbols | `/gortex-scripts-scanviolations` |
-| Events | 20 symbols | `/gortex-events` |
 | Research Read Mcp 3 Dirs | 20 symbols | `/gortex-research-read-mcp-3-dirs` |
+| Events | 20 symbols | `/gortex-events` |
 | Snapshot Loadsnapshot | 19 symbols | `/gortex-snapshot-loadsnapshot` |
 | Ops Handlers | 18 symbols | `/gortex-ops-handlers` |
 | Ops Paginate | 16 symbols | `/gortex-ops-paginate` |
 | Scripts Checkspecifier | 12 symbols | `/gortex-scripts-checkspecifier` |
 | Contract Research Read 1 Dirs | 11 symbols | `/gortex-contract-research-read-1-dirs` |
-| Contract Research Read 2 Dirs | 11 symbols | `/gortex-contract-research-read-2-dirs` |
 | Scripts Scanfiles | 11 symbols | `/gortex-scripts-scanfiles` |
+| Contract Research Read 2 Dirs | 11 symbols | `/gortex-contract-research-read-2-dirs` |
 | Research Read Mcp | 11 symbols | `/gortex-research-read-mcp` |
 | Contract Ops Read 2 Dirs | 10 symbols | `/gortex-contract-ops-read-2-dirs` |
+| Scripts Extof | 9 symbols | `/gortex-scripts-extof` |
 | Bin Main Start Research Mcp | 9 symbols | `/gortex-bin-main-start-research-mcp` |
 | Safety | 9 symbols | `/gortex-safety` |
-| Scripts Extof | 9 symbols | `/gortex-scripts-extof` |
 | Access Loadmockconfig | 8 symbols | `/gortex-access-loadmockconfig` |
 <!-- gortex:skills:end -->
 
