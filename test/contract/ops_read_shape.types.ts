@@ -25,6 +25,7 @@ type _ClosedTrade = Assert<Mutual<ClosedTrade, {
   readonly isWin: boolean | null; readonly closeReason: string | null;
 }>>;
 
+// RunSummary extends ClosedTradesAggregate — the RHS models that inheritance as an intersection.
 type _RunSummary = Assert<Mutual<RunSummary, ClosedTradesAggregate & {
   readonly runId: string; readonly excludesReconcile: boolean; readonly asOf: number;
 }>>;
