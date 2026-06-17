@@ -19,14 +19,14 @@ export function violationFor(file: string, spec: string): string | null {
   if (!isRelative) {
     if (SDK_PKG_RE.test(spec)) {
       if (norm === SDK_SEAM_FILE) return null; // the sole permitted SDK seam
-      return `${file}: '@trading-platform/sdk' may be imported ONLY in ${SDK_SEAM_FILE} (A3 SDK seam) — found in a different contract file`;
+      return `${norm}: '@trading-platform/sdk' may be imported ONLY in ${SDK_SEAM_FILE} (A3 SDK seam) — found in a different contract file`;
     }
-    return `${file}: non-stdlib package import '${spec}' (contract layer must stay dependency-free)`;
+    return `${norm}: non-stdlib package import '${spec}' (contract layer must stay dependency-free)`;
   }
   // relative imports must resolve to somewhere inside src/contract
   const depth = norm.split('/').length - 1 - ROOT.split('/').length; // dirs below ROOT
   const climbs = (spec.match(/\.\.\//g) || []).length;
-  if (climbs > depth) return `${file}: relative import '${spec}' escapes ${ROOT}`;
+  if (climbs > depth) return `${norm}: relative import '${spec}' escapes ${ROOT}`;
   return null;
 }
 
@@ -46,6 +46,7 @@ export function scanViolations(root: string = ROOT): string[] {
   for (const file of walk(root)) {
     const src = readFileSync(file, 'utf8');
     for (const m of src.matchAll(IMPORT_RE)) {
+      // capture group 1 is always defined: IMPORT_RE has exactly one group
       const v = violationFor(file, m[1] as string);
       if (v) out.push(v);
     }
