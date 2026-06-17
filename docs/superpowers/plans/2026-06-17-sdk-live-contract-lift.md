@@ -1,6 +1,6 @@
 # SDK Live Bot-Results Contract Lift (A2.5 → A3) — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** implement task-by-task with fresh context per task or inline, per the installed workflow. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `@trading-platform/sdk` the source of truth for the live bot-results contract primitives, and switch the mock from declaring those types to importing them from the SDK via a vendored tarball — with machine-guaranteed equivalence and isolation.
 
@@ -33,8 +33,10 @@
 - Modify: `packages/sdk/package.json` (add `"./ops-read"` to `exports`)
 - Create: `packages/sdk/conformance/ops-read-dto.conformance.ts`
 - Create: `packages/sdk/conformance/tsconfig.ops-read.json`
-- Create: `scripts/verify_033_sdk_ops_read_conformance.mjs`
-- Modify: root `package.json` (append the new verify to the `gates:033` aggregate)
+- Create: `scripts/verify_sdk_ops_read_conformance.mjs`
+- Modify: root `package.json` (new dedicated `gates:sdk-ops-read` aggregate + wire into the full-suite check chain)
+
+> **Gate placement decision (explicit):** the SDK ops-read conformance gets its **own** dedicated gate `gates:sdk-ops-read`, NOT folded into `gates:033`. Rationale: `gates:033` is the platform's ops-read Surface-A behavioural gate (read-only / audit-logging / subscription-recovery / …); appending an SDK type-conformance check there muddies its semantics and couples it to the SDK build. A purpose-named gate keeps both concerns clean and avoids guessing the platform's next feature number.
 
 - [ ] **Step 1: Create the platform feature branch**
 
@@ -241,12 +243,12 @@ Expected: exit 0, no output (the SDK ops-read DTOs are mutually assignable to `o
 
 - [ ] **Step 7: Create the conformance verify script**
 
-Create `scripts/verify_033_sdk_ops_read_conformance.mjs`:
+Create `scripts/verify_sdk_ops_read_conformance.mjs`:
 
 ```javascript
 // Runs the ops-read SDK ⇄ operations/dto.ts type-conformance fixture (tsc --noEmit).
 // Mirrors verify_036_type_conformance.mjs. Requires the platform to be built first
-// (the fixture imports dist/src/operations/dto.js) — the check:0XX chain runs `npm run build` before gates.
+// (the fixture imports dist/src/operations/dto.js) — the check chain runs `npm run build` before gates.
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -271,29 +273,34 @@ try {
   failures++;
 }
 
-if (failures) { console.error(`verify_033_sdk_ops_read_conformance: ${failures} failure(s)`); process.exit(1); }
-console.log('verify_033_sdk_ops_read_conformance OK');
+if (failures) { console.error(`verify_sdk_ops_read_conformance: ${failures} failure(s)`); process.exit(1); }
+console.log('verify_sdk_ops_read_conformance OK');
 ```
 
-- [ ] **Step 8: Wire the verify script into the `gates:033` aggregate**
+- [ ] **Step 8: Add a dedicated `gates:sdk-ops-read` aggregate and wire it into the full-suite check chain**
 
-In root `package.json`, the `gates:033` script ends with `... && node scripts/verify_033_audit_logging.mjs && node scripts/verify_033_subscription_readonly_recovery.mjs && node scripts/verify_allowlist.mjs`. Insert the new check immediately before `verify_allowlist.mjs`:
+In root `package.json` `scripts`, add a dedicated gate (do NOT touch `gates:033`):
+
+```json
+    "gates:sdk-ops-read": "node scripts/verify_sdk_ops_read_conformance.mjs",
+```
+
+Then make it run in CI: read `package.json` and find the newest `check:0NN` aggregate — the one that runs the full gate suite through `node scripts/pgates.mjs gates:... gates:036` (the highest-numbered `check:0NN`). Append `gates:sdk-ops-read` to the END of that `pgates.mjs` argument list, e.g.:
 
 ```
-... && node scripts/verify_033_subscription_readonly_recovery.mjs && node scripts/verify_033_sdk_ops_read_conformance.mjs && node scripts/verify_allowlist.mjs
+"check:036": "npm run build && npm run gen:sdk-snapshot:check && npm run build:sdk && node scripts/pgates.mjs gates:historical ... gates:036 gates:sdk-ops-read",
 ```
 
-> **Plan-review note:** `gates:033` runs in CI via the `check:0XX` chain, which executes `npm run build` (and `build:sdk`) first — so `dist/src/operations/dto.js` exists when the fixture compiles, exactly like the 036 conformance in `gates:036`. If the platform team prefers a dedicated feature-gate number over appending to `gates:033`, this is a one-line rename — flag at review.
+The check chain runs `npm run build` (and `build:sdk`) FIRST, so `dist/src/operations/dto.js` exists when the fixture compiles — identical to how `gates:036`'s conformance already works.
 
-- [ ] **Step 9: Run the new gate, then the full ops gate, to verify green**
+- [ ] **Step 9: Run the new gate (after a build) to verify green**
 
 ```bash
 cd /home/alexxxnikolskiy/projects/trading-platform
-npm run build && node scripts/verify_033_sdk_ops_read_conformance.mjs
-npm run gates:033
+npm run build && npm run gates:sdk-ops-read
 ```
 
-Expected: `verify_033_sdk_ops_read_conformance OK`, and `gates:033` exits 0. (`gates:033` assumes a prior `npm run build`; we just ran it.)
+Expected: `verify_sdk_ops_read_conformance OK`, exit 0.
 
 - [ ] **Step 10: Sanity-check that nothing else regressed (zero-bump + capability gates)**
 
@@ -312,12 +319,12 @@ Expected: all exit 0 — `gen_sdk_snapshot` reports no drift (we never touched i
 cd /home/alexxxnikolskiy/projects/trading-platform
 git add packages/sdk/src/ops-read/ packages/sdk/package.json \
   packages/sdk/conformance/ops-read-dto.conformance.ts packages/sdk/conformance/tsconfig.ops-read.json \
-  scripts/verify_033_sdk_ops_read_conformance.mjs package.json
+  scripts/verify_sdk_ops_read_conformance.mjs package.json
 git commit -m "feat(sdk): @trading-platform/sdk/ops-read live bot-results surface + conformance gate
 
 New types-only subpath mirroring operations/dto.ts (036 own-declared precedent), proven
-bidirectionally assignable via conformance/ops-read-dto.conformance.ts (gates:033). Backtest
-CONTRACT_VERSION 017.2 and SDK live/rawStorage:false untouched; gen_sdk_snapshot not touched."
+bidirectionally assignable via conformance/ops-read-dto.conformance.ts (dedicated gates:sdk-ops-read).
+Backtest CONTRACT_VERSION 017.2 and SDK live/rawStorage:false untouched; gen_sdk_snapshot not touched."
 ```
 
 ---
@@ -352,12 +359,21 @@ In `/home/alexxxnikolskiy/projects/trading-mock-platform/package.json`, add to `
     "@trading-platform/sdk": "file:./vendor/trading-platform-sdk-0.3.0.tgz",
 ```
 
-Then install:
+Then install — this regenerates `pnpm-lock.yaml` with the vendored-tarball entry:
 
 ```bash
 cd /home/alexxxnikolskiy/projects/trading-mock-platform
 pnpm install
 ```
+
+Immediately confirm the regenerated lockfile is internally consistent (this is THE failure point of a first vendoring — if the committed lock and the `file:` tarball disagree, the Docker `--frozen-lockfile` job and the Task 6 offline smoke go red):
+
+```bash
+git --no-pager diff --stat pnpm-lock.yaml   # should show pnpm-lock.yaml was updated
+pnpm install --frozen-lockfile              # must succeed as a no-op against the just-written lock
+```
+
+Expected: `pnpm-lock.yaml` shows changes (the `@trading-platform/sdk` `file:` entry); `pnpm install --frozen-lockfile` exits 0 with no lockfile modification. Do **not** hand-edit the lockfile — commit it (Step 7) exactly as `pnpm install` produced it.
 
 - [ ] **Step 3: Run the forbidden-deps guard to verify it FAILS (3 violations)**
 
@@ -626,7 +642,9 @@ export { OPS_READ_CONTRACT_VERSION } from './dto.sdk.js';
 export type { OpsReadContractVersion } from './dto.sdk.js';
 ```
 
-- [ ] **Step 4: Typecheck (passes) and run isolation guard (FAILS — demonstrates the seam is caught)**
+- [ ] **Step 4: Typecheck (passes) and run the CURRENT (pre-conversion) isolation guard (FAILS — demonstrates the seam is caught)**
+
+This runs the **original `.mjs` guard** (still on disk; conversion happens in Step 5). The original guard has no SDK special-case — it flags **every** non-relative import with one generic message, so the SDK import in `dto.sdk.ts` is caught:
 
 ```bash
 cd /home/alexxxnikolskiy/projects/trading-mock-platform
@@ -634,7 +652,14 @@ pnpm typecheck
 node scripts/verify_contract_isolation.mjs
 ```
 
-Expected: `pnpm typecheck` exits 0 (types resolve from the vendored SDK). `verify_contract_isolation.mjs` FAILS with `src/contract/ops-read/dto.sdk.ts: non-stdlib package import '@trading-platform/sdk/ops-read' (contract layer must stay dependency-free)`.
+Expected: `pnpm typecheck` exits 0 (types resolve from the vendored SDK). The **original** guard FAILS, printing its generic message (this exact wording is the OLD guard's — Step 5 replaces it with the seam-aware message):
+
+```
+Contract isolation violations:
+src/contract/ops-read/dto.sdk.ts: non-stdlib package import '@trading-platform/sdk/ops-read' (contract layer must stay dependency-free)
+```
+
+(It may also list the same generic violation for `src/contract/ops-read/version.ts` if `version.ts` is rewritten before this step; Step 3 already rewired `version.ts` to import from `./dto.sdk.js` — a relative import — so only `dto.sdk.ts` is flagged.)
 
 - [ ] **Step 5: Rewrite the isolation guard as TypeScript — pure predicate + sub-directory SDK rule**
 
@@ -848,7 +873,6 @@ Create `scripts/verify_vendored_sdk.ts`:
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { OPS_READ_CONTRACT_VERSION } from '@trading-platform/sdk/ops-read';
 
 // The ops-read contract version the mock's fixtures + compat gate pin. The SDK is the source of truth;
 // this constant is the value we REQUIRE the vendored SDK to carry (drift = hard fail).
@@ -857,7 +881,7 @@ const SPEC_RE = /^file:(\.\/vendor\/trading-platform-sdk-\d+\.\d+\.\d+\.tgz)$/;
 
 interface PkgJson { dependencies?: Record<string, string> }
 
-/** Pure: returns a list of specifier problems ([] = clean). */
+/** Pure (no SDK import): returns a list of specifier problems ([] = clean). Safe for unit tests. */
 export function checkSpecifier(pkg: PkgJson): string[] {
   const errs: string[] = [];
   const spec = pkg.dependencies?.['@trading-platform/sdk'];
@@ -868,21 +892,34 @@ export function checkSpecifier(pkg: PkgJson): string[] {
   return errs;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as PkgJson;
+
+  // 1. Validate the specifier + tarball FIRST. The SDK is imported only after this passes, so an
+  //    unresolved/missing SDK surfaces here as a clear message — not a cryptic module-resolution throw.
   const errs = checkSpecifier(pkg);
-  if (OPS_READ_CONTRACT_VERSION !== EXPECTED_OPS_VERSION) {
-    errs.push(`vendored SDK OPS_READ_CONTRACT_VERSION '${OPS_READ_CONTRACT_VERSION}' != expected '${EXPECTED_OPS_VERSION}'`);
-  }
   if (errs.length) {
     console.error(`vendored-sdk check failed:\n${errs.map((e) => `  - ${e}`).join('\n')}`);
     process.exit(1);
   }
-  console.log(`vendored-sdk OK (@trading-platform/sdk ops-read ${OPS_READ_CONTRACT_VERSION})`);
+
+  // 2. Now read the embedded contract version via a dynamic import.
+  let version: string;
+  try {
+    ({ OPS_READ_CONTRACT_VERSION: version } = await import('@trading-platform/sdk/ops-read'));
+  } catch (e) {
+    console.error(`vendored-sdk check failed:\n  - cannot import '@trading-platform/sdk/ops-read' (is it installed from the vendored tgz?): ${(e as Error).message}`);
+    process.exit(1);
+  }
+  if (version !== EXPECTED_OPS_VERSION) {
+    console.error(`vendored-sdk check failed:\n  - vendored SDK OPS_READ_CONTRACT_VERSION '${version}' != expected '${EXPECTED_OPS_VERSION}'`);
+    process.exit(1);
+  }
+  console.log(`vendored-sdk OK (@trading-platform/sdk ops-read ${version})`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  void main();
 }
 ```
 
@@ -1057,10 +1094,10 @@ Expected: exit 0 (the `file:` tarball resolves locally; no network needed). This
 ```bash
 cd /home/alexxxnikolskiy/projects/trading-mock-platform
 pnpm check:ci
-cd /home/alexxxnikolskiy/projects/trading-platform && npm run build && npm run gates:033
+cd /home/alexxxnikolskiy/projects/trading-platform && npm run build && npm run gates:sdk-ops-read
 ```
 
-Expected: mock `check:ci` exits 0 (guard 002 family all green); platform `gates:033` exits 0 (SDK conformance green).
+Expected: mock `check:ci` exits 0 (guard 002 family all green); platform `gates:sdk-ops-read` exits 0 (SDK conformance green).
 
 - [ ] **Step 5: Commit (mock)**
 
