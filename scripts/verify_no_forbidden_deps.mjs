@@ -1,13 +1,21 @@
 import { readFileSync } from 'node:fs';
 
 // Clarification #1: allowlist is checked against DIRECT dependencies only; denylist scans the whole lockfile.
-const RUNTIME_ALLOWLIST = new Set(['hono', '@hono/node-server', '@hono/node-ws', 'ajv', '@modelcontextprotocol/sdk']);
+// A3 (feature 004): @trading-platform/sdk is admitted as a vendored standalone tarball ONLY.
+const RUNTIME_ALLOWLIST = new Set(['hono', '@hono/node-server', '@hono/node-ws', 'ajv', '@modelcontextprotocol/sdk', '@trading-platform/sdk']);
+// bare denylist tokens — the private platform runtime, db, and exchange SDKs.
+// NOTE: '@trading-platform' is intentionally NOT a bare token: the @trading-platform scope is policed
+// separately below so the standalone @trading-platform/sdk can be admitted while everything else under
+// the scope (e.g. a private @trading-platform/platform) stays denied.
 const DENYLIST = [
-  'trading-platform', '@trading-platform',
+  'trading-platform',
   'pg', 'ccxt',
   'binance-api-node', 'node-binance-api', 'bybit-api', 'okx-api',
 ];
 const NON_REGISTRY = /^(?:file:|link:|git\+|git:|github:|workspace:)/;
+// The single permitted non-registry specifier: the vendored SDK tarball.
+const VENDORED_SDK_NAME = '@trading-platform/sdk';
+const VENDORED_SDK_SPEC = /^file:\.\/vendor\/trading-platform-sdk-\d+\.\d+\.\d+\.tgz$/;
 
 const violations = [];
 
@@ -25,11 +33,11 @@ for (const name of Object.keys(deps)) {
   }
 }
 
-// (c) non-registry specifiers — across direct deps + devDeps
+// (c) non-registry specifiers — across direct deps + devDeps; the vendored SDK tarball is the sole exception
 for (const [name, spec] of [...Object.entries(deps), ...Object.entries(devDeps)]) {
-  if (typeof spec === 'string' && NON_REGISTRY.test(spec)) {
-    violations.push(`dependency '${name}' uses a non-registry specifier '${spec}'`);
-  }
+  if (typeof spec !== 'string' || !NON_REGISTRY.test(spec)) continue;
+  if (name === VENDORED_SDK_NAME && VENDORED_SDK_SPEC.test(spec)) continue; // allowed: vendored SDK tgz
+  violations.push(`dependency '${name}' uses a non-registry specifier '${spec}'`);
 }
 
 // (b) denylist anywhere in the lockfile (covers direct + transitive)
@@ -39,9 +47,16 @@ catch { violations.push('pnpm-lock.yaml not found'); }
 for (const bad of DENYLIST) {
   const esc = bad.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // a package name token in a pnpm lockfile is bounded by start/indent/quote/paren and followed by @ / : ' "
-  const re = new RegExp(`(?:^|[\\s/'"(])${esc}(?:[@/:'"\\s])`, 'm');
+  const re = new RegExp(`(?:^|[\\s/'"(])${esc}(?:[@/:'\"\\s])`, 'm');
   if (re.test(lock)) {
     violations.push(`forbidden package '${bad}' present in pnpm-lock.yaml`);
+  }
+}
+// @trading-platform scope: deny every @trading-platform/* EXCEPT the standalone @trading-platform/sdk.
+const TP_SCOPE_RE = /(?:^|[\s/'"(])@trading-platform\/([a-z0-9-]+)/gm;
+for (const m of lock.matchAll(TP_SCOPE_RE)) {
+  if (m[1] !== 'sdk') {
+    violations.push(`forbidden package '@trading-platform/${m[1]}' present in pnpm-lock.yaml`);
   }
 }
 
