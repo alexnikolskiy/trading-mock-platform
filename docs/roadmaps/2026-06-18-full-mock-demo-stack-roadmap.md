@@ -96,7 +96,7 @@ Add a snapshot-backed, read-only historical data surface that can serve as the d
 - Fixture: BTCUSDT 1h+1d bars (72+7), funding (9), open interest (18), liquidations (20) in `ops/bundle.json`
 - All gates green: typecheck, 115 tests, contract-isolation, no-forbidden-deps, no-secrets
 
-## Phase 009 — Historical Client in `trading-backtester`
+## Phase 009 — Historical Client in `trading-backtester` ✅ DONE 2026-06-18
 
 ### Goal
 
@@ -176,7 +176,7 @@ A documented startup path brings up the full stack and proves that:
 ## Recommended execution order
 
 1. Phase 008 — historical read surface in `trading-mock-platform`
-2. Phase 009 — historical client in `trading-backtester`
+2. Phase 009 — historical client in `trading-backtester` ✅
 3. Phase 010 — lab wiring to the mock-backed backtester
 4. Phase 011 — unified demo stack
 
