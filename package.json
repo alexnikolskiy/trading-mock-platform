@@ -17,7 +17,8 @@
     "check:ci": "pnpm check && pnpm verify:no-forbidden-deps && pnpm verify:no-secrets && pnpm verify:vendored-sdk",
     "start": "node dist/src/bin/start-mock-ops.js",
     "start:research-mcp": "node dist/src/bin/start-research-mcp.js",
-    "dev": "tsx src/bin/start-mock-ops.ts"
+    "dev": "tsx src/bin/start-mock-ops.ts",
+    "fetch:snapshot": "python3 scripts/fetch-snapshot.py"
   },
   "dependencies": {
     "@trading-platform/sdk": "file:./vendor/trading-platform-sdk-0.3.0.tgz",
