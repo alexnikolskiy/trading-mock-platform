@@ -45,7 +45,7 @@ That gap is not in the existing ops surface. It is in the missing historical sea
 - historical market data must be provided through a dedicated seam, not mixed into ops-read
 - demo mode must degrade explicitly with capability-aware errors instead of hidden fallbacks
 
-## Phase 008 — Historical Read Surface in `trading-mock-platform`
+## Phase 008 — Historical Read Surface in `trading-mock-platform` ✅ DONE 2026-06-18
 
 ### Goal
 
@@ -84,6 +84,17 @@ Add a snapshot-backed, read-only historical data surface that can serve as the d
 ### Done when
 
 `trading-mock-platform` can act as a real historical read source for a mock-mode backtester.
+
+### Delivered
+
+- `src/contract/historical-read/` — dto.ts (OhlcvBar, FundingEntry, OpenInterestEntry, LiquidationEntry, coverage, discover types), version.ts (`historical.1`), index.ts
+- `HistoricalBundle` added to `SnapshotBundle` (optional field, backward-compatible)
+- AJV schema updated with `historicalBundle` def + nested $defs for all new record types
+- Snapshot readers: `readers/bars.ts`, `readers/funding.ts`, `readers/openInterest.ts`, `readers/liquidations.ts`
+- HTTP handlers: `historical/handlers/{bars,funding,openInterest,liquidations,coverage,discover}.ts`
+- Routes: `GET /historical/discover`, `/historical/bars`, `/historical/funding`, `/historical/open-interest`, `/historical/liquidations`, `/historical/coverage`
+- Fixture: BTCUSDT 1h+1d bars (72+7), funding (9), open interest (18), liquidations (20) in `ops/bundle.json`
+- All gates green: typecheck, 115 tests, contract-isolation, no-forbidden-deps, no-secrets
 
 ## Phase 009 — Historical Client in `trading-backtester`
 

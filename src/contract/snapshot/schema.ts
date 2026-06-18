@@ -56,6 +56,7 @@ export const BUNDLE_SCHEMA = {
       type: 'object', additionalProperties: false, required: ['frames'],
       properties: { frames: { type: 'array', items: { $ref: '#/$defs/replayFrame' } } },
     },
+    historical: { $ref: '#/$defs/historicalBundle' },
   },
   $defs: {
     capabilityAbsent,
@@ -229,6 +230,57 @@ export const BUNDLE_SCHEMA = {
     replayFrame: {
       type: 'object', additionalProperties: false, required: ['offsetMs', 'resource'],
       properties: { offsetMs: { type: 'number' }, resource: { enum: ['runs', 'runtime-health'] } },
+    },
+    ohlcvBar: {
+      type: 'object', additionalProperties: false,
+      required: ['tsMs', 'open', 'high', 'low', 'close', 'volume'],
+      properties: {
+        tsMs: { type: 'number' }, open: { type: 'number' }, high: { type: 'number' },
+        low: { type: 'number' }, close: { type: 'number' }, volume: { type: 'number' },
+      },
+    },
+    fundingEntry: {
+      type: 'object', additionalProperties: false,
+      required: ['tsMs', 'symbol', 'rate'],
+      properties: { tsMs: { type: 'number' }, symbol: { type: 'string' }, rate: { type: 'number' } },
+    },
+    openInterestEntry: {
+      type: 'object', additionalProperties: false,
+      required: ['tsMs', 'symbol', 'openInterestUsd'],
+      properties: { tsMs: { type: 'number' }, symbol: { type: 'string' }, openInterestUsd: { type: 'number' } },
+    },
+    liquidationEntry: {
+      type: 'object', additionalProperties: false,
+      required: ['tsMs', 'symbol', 'side', 'sizeUsd'],
+      properties: {
+        tsMs: { type: 'number' }, symbol: { type: 'string' },
+        side: { enum: ['long', 'short'] }, sizeUsd: { type: 'number' },
+      },
+    },
+    historicalBundle: {
+      type: 'object', additionalProperties: false,
+      required: ['barsBySymbolAndTimeframe', 'fundingBySymbol', 'openInterestBySymbol', 'liquidationsBySymbol'],
+      properties: {
+        barsBySymbolAndTimeframe: {
+          type: 'object',
+          additionalProperties: {
+            type: 'object',
+            additionalProperties: { type: 'array', items: { $ref: '#/$defs/ohlcvBar' } },
+          },
+        },
+        fundingBySymbol: {
+          type: 'object',
+          additionalProperties: { type: 'array', items: { $ref: '#/$defs/fundingEntry' } },
+        },
+        openInterestBySymbol: {
+          type: 'object',
+          additionalProperties: { type: 'array', items: { $ref: '#/$defs/openInterestEntry' } },
+        },
+        liquidationsBySymbol: {
+          type: 'object',
+          additionalProperties: { type: 'array', items: { $ref: '#/$defs/liquidationEntry' } },
+        },
+      },
     },
   },
 } as const;
