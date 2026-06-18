@@ -147,7 +147,7 @@ Make the full research loop work in demo/research mode without private platform 
 
 with no dependency on the private trading platform.
 
-## Phase 011 — Unified Demo Stack
+## Phase 011 — Unified Demo Stack ✅ DONE
 
 ### Goal
 
