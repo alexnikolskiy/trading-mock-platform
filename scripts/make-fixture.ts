@@ -183,8 +183,11 @@ function normalizeHistorical(h: RawHistorical): RawHistorical {
       const rec = e as Record<string, unknown>;
       if ('longUsd' in rec || 'shortUsd' in rec) {
         const { longUsd, shortUsd, ...base } = rec;
-        expanded.push({ ...base, side: 'long', sizeUsd: longUsd ?? 0 });
-        expanded.push({ ...base, side: 'short', sizeUsd: shortUsd ?? 0 });
+        const longSize = typeof longUsd === 'number' ? longUsd : 0;
+        const shortSize = typeof shortUsd === 'number' ? shortUsd : 0;
+        if (longSize > 0) expanded.push({ ...base, side: 'long', sizeUsd: longSize });
+        if (shortSize > 0) expanded.push({ ...base, side: 'short', sizeUsd: shortSize });
+        // a minute with no liquidations on either side contributes no rows
       } else {
         expanded.push(rec);
       }
