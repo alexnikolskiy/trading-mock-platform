@@ -145,6 +145,56 @@ export function filterBundleToSymbols<B extends BundleLike>(bundle: B, symbols: 
   } as unknown as B;
 }
 
+/**
+ * Normalizes the historical sub-bundle so it conforms to the contract schema,
+ * bridging field-name differences between fetch-snapshot's internal OIEntry /
+ * liquidation shapes and the published OpenInterestEntry / LiquidationEntry
+ * contract shapes.
+ *
+ * - openInterest: renames `oiUsd` → `openInterestUsd` (fetch-snapshot used a
+ *   shorter alias; the contract always required the full name).
+ * - liquidations: fetch-snapshot stores per-minute combined rows
+ *   `{ tsMs, symbol, longUsd, shortUsd }`.  The contract requires two separate
+ *   rows per minute: `{ tsMs, symbol, side: 'long'|'short', sizeUsd }`.
+ *   This function expands each combined row into two canonical rows.
+ *
+ * Called only in main() after filtering, before secret-scan and write.
+ * Not exported; does not affect filterBundleToSymbols or test behaviour.
+ */
+function normalizeHistorical(h: RawHistorical): RawHistorical {
+  // 1. openInterest: oiUsd → openInterestUsd
+  const openInterestBySymbol: Record<string, unknown[]> = {};
+  for (const [sym, entries] of Object.entries(h.openInterestBySymbol)) {
+    openInterestBySymbol[sym] = entries.map((e) => {
+      const rec = e as Record<string, unknown>;
+      if ('oiUsd' in rec && !('openInterestUsd' in rec)) {
+        const { oiUsd, ...rest } = rec;
+        return { ...rest, openInterestUsd: oiUsd };
+      }
+      return rec;
+    });
+  }
+
+  // 2. liquidations: { longUsd, shortUsd } → two side rows per minute
+  const liquidationsBySymbol: Record<string, unknown[]> = {};
+  for (const [sym, entries] of Object.entries(h.liquidationsBySymbol)) {
+    const expanded: unknown[] = [];
+    for (const e of entries) {
+      const rec = e as Record<string, unknown>;
+      if ('longUsd' in rec || 'shortUsd' in rec) {
+        const { longUsd, shortUsd, ...base } = rec;
+        expanded.push({ ...base, side: 'long', sizeUsd: longUsd ?? 0 });
+        expanded.push({ ...base, side: 'short', sizeUsd: shortUsd ?? 0 });
+      } else {
+        expanded.push(rec);
+      }
+    }
+    liquidationsBySymbol[sym] = expanded;
+  }
+
+  return { ...h, openInterestBySymbol, liquidationsBySymbol };
+}
+
 function arg(name: string, fallback?: string): string {
   const i = process.argv.indexOf(`--${name}`);
   if (i >= 0 && process.argv[i + 1]) return process.argv[i + 1] as string;
@@ -163,7 +213,10 @@ function main(): void {
   const srcBundle = JSON.parse(readFileSync(join(source, 'ops', 'bundle.json'), 'utf8')) as RawBundle;
 
   const symbols = selectTopSymbols(srcBundle, topN);
-  const fixture = filterBundleToSymbols(srcBundle, symbols);
+  const filtered = filterBundleToSymbols(srcBundle, symbols);
+  const fixture: RawBundle = filtered.historical
+    ? { ...filtered, historical: normalizeHistorical(filtered.historical) }
+    : filtered;
   const bundleStr = JSON.stringify(fixture);
 
   const hits = scanText(bundleStr);
