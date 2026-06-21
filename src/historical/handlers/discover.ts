@@ -59,7 +59,11 @@ const ALL_TIMEFRAMES: readonly Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d
 
 export function buildHistoricalDiscover(bundle: SnapshotBundle): HistoricalCapabilityDescriptor {
   const hist = bundle.historical;
-  const symbols = hist ? Object.keys(hist.barsBySymbolAndTimeframe).sort() : [];
+  // Mirror the platform's real path: a symbol is discoverable iff it has CanonicalRowV2 rows
+  // (the /historical/rows resource). Union with bars-keyed symbols keeps bars-only fixtures listed too.
+  const symbols = hist
+    ? [...new Set([...Object.keys(hist.barsBySymbolAndTimeframe), ...Object.keys(hist.rowsBySymbol ?? {})])].sort()
+    : [];
 
   const presentTimeframes = hist
     ? ([...new Set(
