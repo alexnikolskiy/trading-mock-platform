@@ -12,6 +12,13 @@ const CAPABILITIES: HistoricalCapabilities = {
 
 const RESOURCES: readonly HistoricalResourceDescriptor[] = [
   {
+    name: 'rows',
+    supportedFilters: ['symbols', 'fromMs', 'toMs'],
+    pagination: { cursor: true, maxPageItems: MAX_PAGE },
+    fields: [],
+    availability: 'available',
+  },
+  {
     name: 'bars',
     supportedFilters: ['symbol', 'timeframe', 'fromMs', 'toMs', 'cursor'],
     pagination: { cursor: true, maxPageItems: MAX_PAGE },
