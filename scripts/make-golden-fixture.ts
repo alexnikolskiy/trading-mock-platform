@@ -1,0 +1,109 @@
+/**
+ * make-golden-fixture — convert the platform-side historical golden (an array of
+ * 30 CanonicalRowV2 objects) into a committable mock snapshot fixture that loads
+ * through the standard loadSnapshot path (checksum + manifest + compat + secret-scan
+ * + bundle schema) without weakening any gate.
+ *
+ * The platform golden is the byte-identity source of truth for the real==mock
+ * conformance contract. The rows are copied verbatim into
+ * `historical.rowsBySymbol.BTCUSDT`; the rest of the bundle is a minimal but
+ * schema-valid ops surface (empty runs / health "unavailable") so the fixture
+ * exercises only the historical-rows path.
+ *
+ * Authoring-side tool (like make-fixture / fetch-snapshot): deterministic, no
+ * network, reads a fixed input and writes a fixed output.
+ *
+ * Usage:
+ *   pnpm --config.verify-deps-before-run=false exec tsx scripts/make-golden-fixture.ts
+ *   PLATFORM_GOLDEN=/path/to/MANIFEST.json pnpm exec tsx scripts/make-golden-fixture.ts
+ */
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { sha256Hex } from '../src/snapshot/checksums.js';
+import { loadSnapshot } from '../src/snapshot/loader.js';
+import { scanText } from '../src/safety/secret-scan.js';
+import { SNAPSHOT_SCHEMA_VERSION } from '../src/contract/snapshot/version.js';
+import { OPS_READ_CONTRACT_VERSION } from '../src/contract/ops-read/version.js';
+import { ANALYSIS_CONTRACT_VERSION } from '../src/contract/analysis/version.js';
+import { RESEARCH_READ_CONTRACT_VERSION } from '../src/contract/research-read/version.js';
+import type { SnapshotManifest } from '../src/contract/snapshot/manifest.js';
+import type { SnapshotBundle } from '../src/contract/snapshot/bundle.js';
+import type { CanonicalRowV2 } from '../src/contract/historical-read/dto.js';
+
+const REF = 'historical-golden';
+const SYMBOL = 'BTCUSDT';
+const ASOF = 1735776000000; // first golden minute; deterministic, no Date.now() in health surfaces
+
+const DEFAULT_GOLDEN =
+  '/home/alexxxnikolskiy/projects/trading-platform/test/fixtures/historical-golden/MANIFEST.json';
+
+/** A minimal ops bundle that satisfies BUNDLE_SCHEMA: empty collections, health surfaces
+ *  reported "unavailable" (this is a historical-only fixture). */
+function buildBundle(rows: readonly CanonicalRowV2[]): SnapshotBundle {
+  return {
+    runs: [],
+    tradesByRun: {},
+    eventsByRun: {},
+    decisionsByRun: {},
+    runtimeHealth: { entries: [], asOf: ASOF },
+    marketHealth: { status: 'down', diagnostics: {}, streamAgeMs: null, availability: 'unavailable', asOf: ASOF },
+    executionHealth: { status: 'down', recentCounts: {}, lastEventMs: null, availability: 'unavailable', asOf: ASOF },
+    coverage: { entries: [], availability: 'unavailable', asOf: ASOF },
+    analysisByRun: {},
+    researchByRun: {},
+    replay: { frames: [] },
+    historical: {
+      barsBySymbolAndTimeframe: {},
+      fundingBySymbol: {},
+      openInterestBySymbol: {},
+      liquidationsBySymbol: {},
+      rowsBySymbol: { [SYMBOL]: rows },
+    },
+  };
+}
+
+function main(): void {
+  const goldenPath = process.env.PLATFORM_GOLDEN ?? DEFAULT_GOLDEN;
+  const rows = JSON.parse(readFileSync(goldenPath, 'utf8')) as CanonicalRowV2[];
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error(`platform golden at ${goldenPath} is not a non-empty array of rows`);
+  }
+
+  const bundle = buildBundle(rows);
+  const bundleStr = JSON.stringify(bundle);
+
+  const hits = scanText(bundleStr);
+  if (hits.length > 0) {
+    throw new Error(`secret-scan tripped on golden bundle: ${hits.join(', ')}`);
+  }
+
+  const manifest: SnapshotManifest = {
+    ref: REF,
+    createdAtMs: ASOF,
+    versions: {
+      snapshotSchemaVersion: SNAPSHOT_SCHEMA_VERSION,
+      opsReadContractVersion: OPS_READ_CONTRACT_VERSION,
+      researchReadContractVersion: RESEARCH_READ_CONTRACT_VERSION,
+      analysisContractVersion: ANALYSIS_CONTRACT_VERSION,
+      exporterVersion: 'golden.1',
+      sourcePlatformCommit: 'historical-golden',
+      redactionPolicyVersion: 'redact.1',
+    },
+    bundleRef: 'ops/bundle.json',
+    checksumsRef: 'checksums.json',
+  };
+
+  const out = join(process.cwd(), 'data/snapshots/fixtures', REF);
+  mkdirSync(join(out, 'ops'), { recursive: true });
+  writeFileSync(join(out, 'ops', 'bundle.json'), bundleStr);
+  writeFileSync(join(out, 'checksums.json'), JSON.stringify({ 'ops/bundle.json': sha256Hex(bundleStr) }, null, 2));
+  writeFileSync(join(out, 'manifest.json'), JSON.stringify(manifest, null, 2));
+
+  // Self-validation: re-run the full loader gate chain on what we just wrote.
+  loadSnapshot(out);
+
+  console.log(`golden fixture '${REF}' written: ${rows.length} ${SYMBOL} rows → ${out}`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
