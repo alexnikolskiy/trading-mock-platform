@@ -1,17 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { openSnapshot } from '../../src/snapshot/registry.js';
 import { readRows } from '../../src/snapshot/readers/rows.js';
 import type { CanonicalRowV2 } from '../../src/contract/historical-read/dto.js';
 
-// The platform-side golden is the byte-identity source of truth. The committed mock
-// fixture must surface exactly these 30 rows through the standard load path.
-const PLATFORM_GOLDEN =
-  process.env.PLATFORM_GOLDEN ??
-  '/home/alexxxnikolskiy/projects/trading-platform/test/fixtures/historical-golden/MANIFEST.json';
+// The platform-side golden is the byte-identity source of truth. We read the *vendored*,
+// committed copy (symmetric to the conformance harness) so this test is self-contained and
+// passes in CI without the platform repo co-located. Cross-repo drift is caught separately
+// by scripts/verify_harness_sync.mjs (hard sha + soft byte-compare against the live repo).
+const VENDORED_GOLDEN = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../conformance/_vendored/platform-historical-golden.json',
+);
 
-const golden = JSON.parse(readFileSync(PLATFORM_GOLDEN, 'utf8')) as CanonicalRowV2[];
+const golden = JSON.parse(readFileSync(VENDORED_GOLDEN, 'utf8')) as CanonicalRowV2[];
 
 describe('golden snapshot fixture (fixtures/historical-golden)', () => {
   // loadSnapshot runs verifyChecksum → assertValidManifest → assertSnapshotCompatible

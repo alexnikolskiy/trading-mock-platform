@@ -13,13 +13,18 @@
  * Authoring-side tool (like make-fixture / fetch-snapshot): deterministic, no
  * network, reads a fixed input and writes a fixed output.
  *
+ * The byte-identity input is the *vendored* copy committed under
+ * test/conformance/_vendored/platform-historical-golden.json (CI-self-contained,
+ * symmetric to the vendored conformance harness). PLATFORM_GOLDEN overrides it for
+ * re-vendoring from the live platform repo.
+ *
  * Usage:
  *   pnpm --config.verify-deps-before-run=false exec tsx scripts/make-golden-fixture.ts
  *   PLATFORM_GOLDEN=/path/to/MANIFEST.json pnpm exec tsx scripts/make-golden-fixture.ts
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { sha256Hex } from '../src/snapshot/checksums.js';
 import { loadSnapshot } from '../src/snapshot/loader.js';
 import { scanText } from '../src/safety/secret-scan.js';
@@ -35,8 +40,13 @@ const REF = 'historical-golden';
 const SYMBOL = 'BTCUSDT';
 const ASOF = 1735776000000; // first golden minute; deterministic, no Date.now() in health surfaces
 
-const DEFAULT_GOLDEN =
-  '/home/alexxxnikolskiy/projects/trading-platform/test/fixtures/historical-golden/MANIFEST.json';
+// Default to the vendored, committed copy so the fixture reproduces in CI without the
+// platform repo. PLATFORM_GOLDEN re-points at the live platform MANIFEST for re-vendoring.
+const VENDORED_GOLDEN = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'test/conformance/_vendored/platform-historical-golden.json',
+);
 
 /** A minimal ops bundle that satisfies BUNDLE_SCHEMA: empty collections, health surfaces
  *  reported "unavailable" (this is a historical-only fixture). */
@@ -64,7 +74,7 @@ function buildBundle(rows: readonly CanonicalRowV2[]): SnapshotBundle {
 }
 
 function main(): void {
-  const goldenPath = process.env.PLATFORM_GOLDEN ?? DEFAULT_GOLDEN;
+  const goldenPath = process.env.PLATFORM_GOLDEN ?? VENDORED_GOLDEN;
   const rows = JSON.parse(readFileSync(goldenPath, 'utf8')) as CanonicalRowV2[];
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error(`platform golden at ${goldenPath} is not a non-empty array of rows`);
