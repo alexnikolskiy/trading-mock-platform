@@ -257,6 +257,25 @@ export const BUNDLE_SCHEMA = {
         side: { enum: ['long', 'short'] }, sizeUsd: { type: 'number' },
       },
     },
+    canonicalRowV2: {
+      type: 'object', additionalProperties: false,
+      required: [
+        'schema_version', 'minute_ts', 'symbol', 'open', 'high', 'low', 'close', 'volume', 'turnover',
+        'oi_total_usd', 'funding_rate', 'liq_long_usd', 'liq_short_usd',
+        'has_oi', 'has_funding', 'has_liquidations',
+        'taker_buy_volume_usd', 'taker_sell_volume_usd', 'has_taker_flow',
+      ],
+      properties: {
+        schema_version: { type: 'number' }, minute_ts: { type: 'number' }, symbol: { type: 'string' },
+        open: { type: 'number' }, high: { type: 'number' }, low: { type: 'number' },
+        close: { type: 'number' }, volume: { type: 'number' }, turnover: { type: 'number' },
+        oi_total_usd: { type: ['number', 'null'] }, funding_rate: { type: ['number', 'null'] },
+        liq_long_usd: { type: ['number', 'null'] }, liq_short_usd: { type: ['number', 'null'] },
+        has_oi: { type: 'boolean' }, has_funding: { type: 'boolean' }, has_liquidations: { type: 'boolean' },
+        taker_buy_volume_usd: { type: ['number', 'null'] }, taker_sell_volume_usd: { type: ['number', 'null'] },
+        has_taker_flow: { type: 'boolean' },
+      },
+    },
     historicalBundle: {
       type: 'object', additionalProperties: false,
       required: ['barsBySymbolAndTimeframe', 'fundingBySymbol', 'openInterestBySymbol', 'liquidationsBySymbol'],
@@ -279,6 +298,10 @@ export const BUNDLE_SCHEMA = {
         liquidationsBySymbol: {
           type: 'object',
           additionalProperties: { type: 'array', items: { $ref: '#/$defs/liquidationEntry' } },
+        },
+        rowsBySymbol: {
+          type: 'object',
+          additionalProperties: { type: 'array', items: { $ref: '#/$defs/canonicalRowV2' } },
         },
       },
     },
