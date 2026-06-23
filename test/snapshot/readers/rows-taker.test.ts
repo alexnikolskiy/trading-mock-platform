@@ -34,5 +34,6 @@ describe('readRows + taker', () => {
     expect(out).toHaveLength(1);
     expect(out[0]!.has_taker_flow).toBe(false);
     expect(out[0]!.taker_buy_volume_usd).toBeNull();
+    expect(out[0]!.taker_sell_volume_usd).toBeNull();
   });
 });

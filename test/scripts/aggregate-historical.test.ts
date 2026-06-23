@@ -57,4 +57,28 @@ describe('aggregateHistorical → rowsBySymbol', () => {
     expect(r.map((x) => x.minute_ts)).toEqual([1_781_220_000_000, 1_781_220_060_000]);
     expect(r[1]!.close).toBe(2);
   });
+
+  it('flags has_taker_flow when only one taker side is present', () => {
+    const out = aggregateHistorical({ ESPORTSUSDT: [minute({ takerBuy: 42, takerSell: null })] });
+    const r = out.rowsBySymbol['ESPORTSUSDT']!;
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({
+      has_taker_flow: true,
+      taker_buy_volume_usd: 42,
+      taker_sell_volume_usd: null,
+    });
+  });
+
+  it('returns an empty rowsBySymbol for empty input', () => {
+    expect(aggregateHistorical({}).rowsBySymbol).toEqual({});
+  });
+
+  it('emits all has_* false and null optionals for a bare minute', () => {
+    const out = aggregateHistorical({ ESPORTSUSDT: [minute({})] });
+    expect(out.rowsBySymbol['ESPORTSUSDT']![0]).toMatchObject({
+      oi_total_usd: null, funding_rate: null, liq_long_usd: null, liq_short_usd: null,
+      has_oi: false, has_funding: false, has_liquidations: false,
+      taker_buy_volume_usd: null, taker_sell_volume_usd: null, has_taker_flow: false,
+    });
+  });
 });
