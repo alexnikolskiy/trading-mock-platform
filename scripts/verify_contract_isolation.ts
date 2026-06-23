@@ -6,9 +6,13 @@ export const ROOT = 'src/contract';
 const IMPORT_RE = /^\s*(?:import|export)\b[^;]*?from\s+['"]([^'"]+)['"]/gm;
 
 // A3 (feature 004): @trading-platform/sdk is the ONE permitted external import in the contract layer,
-// and ONLY in this single seam file. Every other contract file (notably research-read/dto.ts) MUST stay
-// dependency-free — this is the machine guarantee that research-read remains extractable.
-const SDK_SEAM_FILE = 'src/contract/ops-read/dto.sdk.ts';
+// and ONLY in these designated seam files. Every other contract file (notably research-read/dto.ts) MUST
+// stay dependency-free — this is the machine guarantee that research-read remains extractable.
+const SDK_SEAM_FILES = new Set([
+  'src/contract/ops-read/dto.sdk.ts',
+  'src/contract/historical-read/dto.sdk.ts',
+]);
+const SDK_SEAM_LIST = [...SDK_SEAM_FILES].join(', ');
 const SDK_PKG_RE = /^@trading-platform\/sdk(?:\/.*)?$/;
 
 /** Returns a violation string for an import `spec` seen in `file`, or null if the import is allowed. */
@@ -18,8 +22,8 @@ export function violationFor(file: string, spec: string): string | null {
   const isRelative = spec.startsWith('.');
   if (!isRelative) {
     if (SDK_PKG_RE.test(spec)) {
-      if (norm === SDK_SEAM_FILE) return null; // the sole permitted SDK seam
-      return `${norm}: '@trading-platform/sdk' may be imported ONLY in ${SDK_SEAM_FILE} (A3 SDK seam) — found in a different contract file`;
+      if (SDK_SEAM_FILES.has(norm)) return null; // one of the permitted SDK seams
+      return `${norm}: '@trading-platform/sdk' may be imported ONLY in ${SDK_SEAM_LIST} (A3 SDK seams) — found in a different contract file`;
     }
     return `${norm}: non-stdlib package import '${spec}' (contract layer must stay dependency-free)`;
   }

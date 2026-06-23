@@ -1,4 +1,5 @@
 import type { SourceAvailability, PageEnvelope } from '../common/envelopes.js';
+import type { CanonicalRowV2 } from './dto.sdk.js';
 
 // --- primitives ---
 
@@ -78,29 +79,9 @@ export interface HistoricalCapabilityDescriptor {
   readonly timeframes: readonly Timeframe[];
 }
 
-// --- canonical row v2 (frozen mirror of trading-platform CanonicalRowV2, 19 fields) ---
+// --- canonical row v2 (sourced from trading-platform SDK via the historical SDK seam, 19 fields) ---
 
-export interface CanonicalRowV2 {
-  readonly schema_version: number;
-  readonly minute_ts: number;
-  readonly symbol: string;
-  readonly open: number;
-  readonly high: number;
-  readonly low: number;
-  readonly close: number;
-  readonly volume: number;
-  readonly turnover: number;
-  readonly oi_total_usd: number | null;
-  readonly funding_rate: number | null;
-  readonly liq_long_usd: number | null;
-  readonly liq_short_usd: number | null;
-  readonly has_oi: boolean;
-  readonly has_funding: boolean;
-  readonly has_liquidations: boolean;
-  readonly taker_buy_volume_usd: number | null;
-  readonly taker_sell_volume_usd: number | null;
-  readonly has_taker_flow: boolean;
-}
+export type { CanonicalRowV2 };
 
 // --- page aliases ---
 
