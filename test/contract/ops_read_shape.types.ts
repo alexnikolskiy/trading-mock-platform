@@ -21,6 +21,7 @@ type _BotRunRecord = Assert<Mutual<BotRunRecord, {
 type _ClosedTrade = Assert<Mutual<ClosedTrade, {
   readonly tradeId: string; readonly runId: string; readonly symbol: string; readonly side: TradeSide;
   readonly openedAtMs: number; readonly closedAtMs: number | null;
+  readonly entryPrice: string | null; readonly exitPrice: string | null;
   readonly realizedPnl: string; readonly pnlPct: string;
   readonly isWin: boolean | null; readonly closeReason: string | null;
 }>>;

@@ -4,13 +4,13 @@ import type { LoadedSnapshot } from '../../src/snapshot/loader.js';
 
 const snap = {
   dir: '.', manifest: { ref: 't', createdAtMs: 1, bundleRef: 'b', checksumsRef: 'c',
-    versions: { snapshotSchemaVersion: 'snapshot.1', opsReadContractVersion: 'ops.3',
+    versions: { snapshotSchemaVersion: 'snapshot.1', opsReadContractVersion: 'ops.4',
       researchReadContractVersion: 'research.1', analysisContractVersion: 'ops.4',
       exporterVersion: 'e', sourcePlatformCommit: 'x', redactionPolicyVersion: 'r' } },
   bundle: {
     runs: [{ runId: 'r1', mode: 'live', status: 'running', strategy: { name: 's', version: '1' },
       startedAtMs: 1, finishedAtMs: null, lastSeenMs: 2, symbols: ['BTCUSDT'] }],
-    tradesByRun: { r1: [] }, eventsByRun: {}, decisionsByRun: {},
+    tradesByRun: { r1: [] }, eventsByRun: {}, decisionsByRun: {}, tradeEvidenceByTrade: {},
     runtimeHealth: { entries: [], asOf: 1 },
     marketHealth: { status: 'ok', diagnostics: {}, streamAgeMs: null, availability: 'available', asOf: 1 },
     executionHealth: { status: 'ok', recentCounts: {}, lastEventMs: null, availability: 'unavailable', asOf: 1 },
@@ -27,7 +27,7 @@ describe('ops read http app', () => {
   it('GET /ops/discover returns ops.3 200 (reachability for office)', async () => {
     const res = await makeApp().request('/ops/discover');
     expect(res.status).toBe(200);
-    expect((await res.json() as { opsContractVersion: string }).opsContractVersion).toBe('ops.3');
+    expect((await res.json() as { opsContractVersion: string }).opsContractVersion).toBe('ops.4');
   });
   it('GET /ops/runs?mode=live returns a page with strategy.name present', async () => {
     const res = await makeApp().request('/ops/runs?mode=live');

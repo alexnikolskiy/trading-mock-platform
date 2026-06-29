@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { assertValidManifest, assertValidBundle } from '../../src/snapshot/validate.js';
 
 const versions = {
-  snapshotSchemaVersion: 'snapshot.1', opsReadContractVersion: 'ops.3',
+  snapshotSchemaVersion: 'snapshot.1', opsReadContractVersion: 'ops.4',
   researchReadContractVersion: 'research.1', analysisContractVersion: 'ops.4',
   exporterVersion: 'e', sourcePlatformCommit: 'x', redactionPolicyVersion: 'r',
 };
 const manifest = { ref: 't', createdAtMs: 1, bundleRef: 'ops/bundle.json', checksumsRef: 'checksums.json', versions };
 const emptyBundle = {
-  runs: [], tradesByRun: {}, eventsByRun: {}, decisionsByRun: {},
+  runs: [], tradesByRun: {}, eventsByRun: {}, decisionsByRun: {}, tradeEvidenceByTrade: {},
   runtimeHealth: { entries: [], asOf: 1 },
   marketHealth: { status: 'ok', diagnostics: {}, streamAgeMs: null, availability: 'available', asOf: 1 },
   executionHealth: { status: 'ok', recentCounts: {}, lastEventMs: null, availability: 'unavailable', asOf: 1 },
